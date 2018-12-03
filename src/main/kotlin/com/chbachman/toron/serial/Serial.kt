@@ -1,10 +1,5 @@
-package com.chbachman.serial
+package com.chbachman.toron.serial
 
-import com.chbachman.api.anilist.AniList
-import com.chbachman.api.anilist.CoverImage
-import com.chbachman.api.anilist.MediaTitle
-import com.chbachman.api.anilist.Page
-import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource
 import okio.utf8Size

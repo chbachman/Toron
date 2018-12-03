@@ -1,26 +1,27 @@
-import com.chbachman.api.anilist.AniList
-import com.chbachman.api.pushshift.PushShift
-import com.chbachman.api.reddit.RedditSearch
-import com.chbachman.api.reddit.RedditSearchPostData
+package com.chbachman.toron
+
+import com.chbachman.toron.api.anilist.AniList
+import com.chbachman.toron.api.pushshift.PushShift
+import com.chbachman.toron.api.reddit.RedditSearch
+import com.chbachman.toron.api.reddit.RedditSearchPostData
 import com.fasterxml.jackson.databind.SerializationFeature
 import io.ktor.application.call
 import io.ktor.application.install
-import io.ktor.client.features.BadResponseStatusException
-import io.ktor.client.response.readText
 import io.ktor.features.CORS
 import io.ktor.features.ContentNegotiation
+import io.ktor.http.HttpStatusCode
 import io.ktor.jackson.jackson
 import io.ktor.response.respond
 import io.ktor.routing.get
+import io.ktor.routing.route
 import io.ktor.routing.routing
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import okio.*
 import java.io.File
-import java.lang.Exception
+
+val homeDir = File(System.getProperty("user.home"))
 
 class ShowPost(post: RedditSearchPostData) {
     val links: List<String> by lazy {
@@ -84,7 +85,7 @@ data class GroupedData(
     val discussion: List<PushShift>
 )
 
-val folder = File("/Users/Chandler/Desktop/Toron/")
+val folder = File(homeDir, "toron/database")
 val out = File(folder, "database.json")
 val error = File(folder, "error.txt")
 val runs = File(folder, "runs.txt")
@@ -101,6 +102,7 @@ fun main(args: Array<String>) = runBlocking<Unit> {
         .filter { it.is_self }
         .filter { it.title.contains(Regex("\\d")) }
         .filter { it.episode != null }
+        .filterNot { it.title.contains("watch", ignoreCase = true) }
         .toList()
 
     val grouped = list
@@ -108,8 +110,17 @@ fun main(args: Array<String>) = runBlocking<Unit> {
         .groupBy { it.showTitle }
         .toList()
         .map { it.first to it.second.sortedBy { it.episode?.first } }
-        .filter { it.second.size > 50 }
+        .filter { it.second.size > 20 }
+        // Pick the episode discussion with a higher score if we have two.
+        .map { (title, episodes) ->
+            title to episodes
+                .groupBy { it.episode }
+                .mapNotNull { (_, episodes) ->
+                    episodes.maxBy { it.score }
+                }
+        }
         .map { GroupedData(AniList.search(it.first).firstOrNull(), it.second) }
+        .filter { it.showInfo != null }
         //.sortedByDescending { it.discussion.size }
 
     val server = embeddedServer(Netty, port = 8080) {
@@ -119,13 +130,26 @@ fun main(args: Array<String>) = runBlocking<Unit> {
             }
         }
         install(CORS) {
-            host("chbachman.com")
-            host("localhost")
+            anyHost()
         }
         routing {
-            get("/api/list.json") {
-                call.respond(grouped)
+            route("/api") {
+                get("/list") {
+                    call.respond(grouped.map { it.showInfo })
+                }
+                get("/show/{id}") {
+                    val id = call.parameters["id"]?.toInt()
+                    val result = grouped.find { show -> show.showInfo?.id == id }
+
+                    if (result != null) {
+                        call.respond(result)
+                    } else {
+                        call.respond(HttpStatusCode.NotFound)
+                    }
+
+                }
             }
+
         }
     }
     server.start(wait = true)

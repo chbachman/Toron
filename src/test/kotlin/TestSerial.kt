@@ -1,4 +1,4 @@
-import com.chbachman.serial.Serial
+import com.chbachman.toron.serial.Serial
 import okio.Buffer
 import org.junit.Before
 import org.junit.Test

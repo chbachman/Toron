@@ -1,14 +1,23 @@
-package com.chbachman.api.anilist
+package com.chbachman.toron.api.anilist
 
 import com.beust.klaxon.Json
 import com.beust.klaxon.Klaxon
-import com.chbachman.serial.Cache
+import com.chbachman.toron.serial.Cache
 import io.ktor.client.HttpClient
 import io.ktor.client.request.post
 import io.ktor.content.TextContent
 import io.ktor.http.ContentType
-import java.io.File
+import kotlinx.coroutines.delay
 import java.net.URL
+
+data class Score(
+    val score: Int,
+    val amount: Int
+)
+
+data class MediaStats(
+    val scoreDistribution: List<Score>
+)
 
 data class MediaTitle(
     val romaji: String,
@@ -18,7 +27,8 @@ data class MediaTitle(
 
 data class CoverImage(
     val medium: String,
-    val large: String
+    val large: String,
+    val extraLarge: String
 )
 
 private fun loadFile(name: String): URL {
@@ -52,7 +62,9 @@ data class AniList(
     val popularity: Int,
     val episodes: Int = 0,
     val isLocked: Boolean,
-    val siteUrl: String
+    val siteUrl: String,
+    val description: String? = null,
+    val stats: MediaStats
 ) {
     companion object {
         private val client = HttpClient()
@@ -62,7 +74,10 @@ data class AniList(
             .readText()
             .replace("\n".toRegex(), "")
 
-        private val cache = Cache.create<String, Page>("toron-anilist") { query ->
+        private val cache = Cache.create<String, Page>("toron-anilist") { unsanitizedQuery ->
+            println("Loading `$unsanitizedQuery` from AniList")
+            delay(1000)
+            val query = unsanitizedQuery.replace("\"", "\\\"")
             val response = client.post<String>("https://graphql.anilist.co") {
                 body = TextContent("{\"query\": \"$gql\", \"variables\": {\"query\": \"$query\"}}", contentType = ContentType.Application.Json)
             }

@@ -1,4 +1,4 @@
-package com.chbachman.api.pushshift
+package com.chbachman.toron.api.pushshift
 
 import com.beust.klaxon.Klaxon
 import io.ktor.client.HttpClient

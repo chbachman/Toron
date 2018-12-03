@@ -1,9 +1,5 @@
-package com.chbachman.api.pushshift
+package com.chbachman.toron.api.pushshift
 
-import com.chbachman.api.anilist.AniList
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.async
 import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource

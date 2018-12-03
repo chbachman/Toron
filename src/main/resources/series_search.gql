@@ -11,6 +11,7 @@ query($query: String) {
       coverImage {
         medium
         large
+        extraLarge
       }
       bannerImage
       format
@@ -22,6 +23,13 @@ query($query: String) {
       episodes
       isLocked
       siteUrl
+      description
+      stats {
+        scoreDistribution {
+          score
+          amount
+        }
+      }
     }
   }
 }

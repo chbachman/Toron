@@ -1,4 +1,4 @@
-package com.chbachman.api.reddit
+package com.chbachman.toron.api.reddit
 
 data class RedditCommentPost(
     val name: String,

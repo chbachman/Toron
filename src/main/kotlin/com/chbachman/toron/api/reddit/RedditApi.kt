@@ -1,4 +1,4 @@
-package com.chbachman.api.reddit
+package com.chbachman.toron.api.reddit
 
 import com.beust.klaxon.JsonArray
 import com.beust.klaxon.JsonObject
