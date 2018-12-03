@@ -133,7 +133,7 @@ fun main(args: Array<String>) = runBlocking<Unit> {
             anyHost()
         }
         routing {
-            route("/api") {
+            route("/toron") {
                 get("/list") {
                     call.respond(grouped.map { it.showInfo })
                 }
