@@ -123,7 +123,7 @@ fun main(args: Array<String>) = runBlocking<Unit> {
         .filter { it.showInfo != null }
         //.sortedByDescending { it.discussion.size }
 
-    val server = embeddedServer(Netty, port = 8080) {
+    val server = embeddedServer(Netty, port = 8081) {
         install(ContentNegotiation) {
             jackson {
                 enable(SerializationFeature.INDENT_OUTPUT)
