@@ -2,7 +2,9 @@ package com.chbachman.toron.api.reddit
 
 data class RedditCommentPost(
     val name: String,
-    val title: String
+    val title: String,
+    val score: Int,
+    val num_comments: Int
 )
 
 data class RedditCommentPostData(

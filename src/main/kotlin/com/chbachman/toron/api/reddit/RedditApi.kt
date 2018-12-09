@@ -23,7 +23,7 @@ class RedditPost constructor(
             userAgent(userAgent)
         }
 
-        val obj = (Parser().parse(response) as JsonArray<JsonObject>).first()
+        val obj = (Parser().parse(StringBuilder(response)) as JsonArray<JsonObject>).first()
 
         return Klaxon().parseFromJsonObject<RedditCommentRequest>(obj)!!.data.children.first().data
     }

@@ -6,31 +6,144 @@ import okio.sink
 import okio.source
 import java.io.File
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.reflect.KClass
 import kotlin.reflect.full.createType
 
-private const val cacheFiles = 16
+class CacheFile<In: Any, Out: Any>(
+    private val cacheFile: File,
+    val expired: (In, Out) -> Boolean,
+    val produce: suspend (In) -> Out,
+    private val inClass: KClass<In>,
+    private val outClass: KClass<Out>
+) {
+    // The in-memory cache.
+    private val memory = mutableMapOf<In, Out>()
 
-//class CacheFile<In: Any, Out: Any>(
-//    private val cacheFile: File,
-//    val produce: suspend (In) -> Out,
-//    private val inClass: KClass<In>,
-//    private val outClass: KClass<Out>
-//) {
-//    private val memory = mutableMapOf<In, Out>()
-//    var dirty = true
-//
-//    fun load() {
-//        if () {
-//
-//        }
-//
-//        dirty = false
-//    }
-//}
+    // The in-memory items that don't exist on disk.
+    private val unsaved = mutableMapOf<In, Out>()
+
+    // The sink to write to when saving needs to happen.
+    private val sink = cacheFile.sink(append = true).buffer()
+    var loaded = false
+
+    init {
+        if (!cacheFile.exists()) {
+            cacheFile.createNewFile()
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun load() {
+        // Only load once.
+        if (loaded) {
+            return
+        }
+
+        if (cacheFile.exists() && cacheFile.canRead()) {
+            val source = cacheFile.source().buffer()
+
+            while (!source.exhausted()) {
+                val inValue = Serial.read(source, inClass.createType()) as In
+                val outValue = Serial.read(source, outClass.createType()) as Out
+                memory[inValue] = outValue
+            }
+        }
+
+        loaded = true
+    }
+
+    private fun save() {
+        unsaved.forEach { (inValue, outValue) ->
+            Serial.write(sink, inValue, inClass.createType())
+            Serial.write(sink, outValue, outClass.createType())
+        }
+
+        unsaved.clear()
+
+        sink.flush()
+    }
+
+    fun add(query: In, page: Out) {
+        // Key already exists, don't add it again.
+        // Use set for that.
+        if (memory.containsKey(query)) {
+            return
+        }
+
+        // Add to memory cache.
+        memory[query] = page
+
+        // Add to the queue to save to file cache.
+        unsaved[query] = page
+
+        // TODO: Look into some method to saving when needed.
+        // TODO: Maybe on a background thread? Shouldn't be too hard. (Famous last words)
+        save()
+    }
+
+    // For right now, this deletes the file and marks everything as needing saving.
+    fun set(query: In, page: Out) {
+        // That was the easy part.
+        memory[query] = page
+
+        // We need to load. Otherwise we risk losing data on the disk.
+        load()
+
+        // Mark everything as needing to be saved.
+        unsaved.putAll(memory)
+
+        // Nuke disk cache.
+        cacheFile.delete()
+
+        // Now save the cache to the disk.
+        // TODO: Look into some method to saving when needed.
+        save()
+    }
+
+    private suspend fun refresh(query: In, data: Out): Out {
+        val expired = expired(query, data)
+
+        if (!expired) { return data }
+
+        val refreshed = produce(query)
+
+        // Update the cache with the new value.
+        set(query, refreshed)
+
+        return refreshed
+    }
+
+    suspend fun get(query: In): Out {
+        // First try and see if it is in memory.
+        if (memory.containsKey(query)) {
+            return refresh(query, memory[query]!!)
+        }
+
+        load()
+
+        // Try again and see if we got it.
+        if (memory.containsKey(query)) {
+            return refresh(query, memory[query]!!)
+        }
+
+        // Not in the file. We now need to load from the producer.
+        val data = produce(query)
+
+        // Add to cache.
+        add(query, data)
+
+        // Don't need to refresh since we just got it.
+        return data
+    }
+}
+
+private const val cacheFiles = 16
+private val cacheDir = File(homeDir, "toron/cache")
 
 class Cache<In: Any, Out: Any>(
     private val cacheName: String,
+    val expired: (In, Out) -> Boolean = { _, _ -> false },
     val produce: suspend (In) -> Out,
     private val inClass: KClass<In>,
     private val outClass: KClass<Out>
@@ -38,114 +151,33 @@ class Cache<In: Any, Out: Any>(
     companion object {
         inline fun <reified In: Any, reified Out: Any> create(
             cacheName: String,
+            noinline expired: (In, Out) -> Boolean = { _, _ -> false },
             noinline produce: suspend (In) -> Out
         ): Cache<In, Out> {
-            return Cache(cacheName, produce, In::class, Out::class)
+            return Cache(cacheName, expired, produce, In::class, Out::class)
         }
     }
 
-    private val memory = mutableMapOf<In, Out>()
-    private val cacheDir = File(homeDir, "toron/cache")
-    private val loadedFiles = mutableSetOf<String>()
-
-    private fun cacheName(query: In): String {
-
-        val index = abs(query.hashCode() % cacheFiles)
-        return "$cacheName-$index.cache"
+    private val caches = List(cacheFiles) { index ->
+        CacheFile(
+            File(cacheDir, "$cacheName-$index.cache"),
+            expired,
+            produce,
+            inClass,
+            outClass
+        )
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun loadCacheFile(query: In): List<Pair<In, Out>>? {
-        val cacheFile = File(cacheDir, cacheName(query))
-
-        if (loadedFiles.contains(cacheFile.path)) return null
-
-        loadedFiles.add(cacheFile.path)
-
-        if (!cacheFile.exists()) return null
-        if (!cacheFile.canRead()) return null
-
-        val source = cacheFile.source().buffer()
-
-        val list = mutableListOf<Pair<In, Out>>()
-
-        while (!source.exhausted()) {
-            val inValue = Serial.read(source, inClass.createType()) as In
-            val outValue = Serial.read(source, outClass.createType()) as Out
-            list += inValue to outValue
-        }
-
-        return list
+    private fun cache(value: In): CacheFile<In, Out> {
+        val index = abs(value.hashCode() % cacheFiles)
+        return caches[index]
     }
 
-    private fun addToCacheFile(query: In, page: Out) {
-        val cacheFile = File(cacheDir, cacheName(query))
-        val sink = cacheFile.sink(append = true).buffer()
-
-        Serial.write(sink, query, inClass.createType())
-        Serial.write(sink, page, outClass.createType())
-        sink.flush()
+    fun add(inValue: In, outValue: Out) {
+        cache(inValue).add(inValue, outValue)
     }
 
-    private fun addCacheData(query: In, page: Out) {
-        // Add to memory cache.
-        memory[query] = page
-
-        // Add to file cache.
-        addToCacheFile(query, page)
-    }
-
-    private fun updateCacheData(query: In, page: Out) {
-        // Update memory layer.
-        memory[query] = page
-
-        // Update file layer.
-        val cacheName = cacheName(query)
-
-        // If the page is already loaded, then we don't need to do anything special.
-        // This is because addCacheData assumes it is a brand new data type, which i
-        if (!loadedFiles.contains(cacheName)) {
-            addToCacheFile(query, page)
-        }
-
-        // We need to totally refresh the file, so figure out what should be in it and resave it.
-        // The
-        // memory.filter { it. }
-    }
-
-    // Write all memory data to file.
-    fun flush() {
-
-    }
-
-    suspend fun get(query: In): Out {
-        if (memory.containsKey(query)) {
-            return memory[query]!!
-        }
-
-        // Not in memory, load the file associated with it.
-        val fileData = loadCacheFile(query)
-        if (fileData != null) {
-            memory.putAll(fileData)
-        }
-
-        if (memory.containsKey(query)) {
-            return memory[query]!!
-        }
-
-        // Not in the file. We now need to load from the producer.
-        val data = produce(query)
-
-        // Add to cache.
-        addCacheData(query, data)
-        return data
-    }
-
-    fun add(query: In, page: Out) {
-        if (memory.containsKey(query)) {
-            updateCacheData(query, page)
-        } else {
-            addCacheData(query, page)
-        }
+    suspend fun get(inValue: In): Out {
+        return cache(inValue).get(inValue)
     }
 }

@@ -21,7 +21,7 @@ import kotlinx.coroutines.runBlocking
 import okio.*
 import java.io.File
 
-val homeDir = File(System.getProperty("user.home"))
+val homeDir = File(System.getProperty("user.home"), "toron")
 
 class ShowPost(post: RedditSearchPostData) {
     val links: List<String> by lazy {

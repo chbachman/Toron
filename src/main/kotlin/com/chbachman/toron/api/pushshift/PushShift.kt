@@ -1,9 +1,17 @@
 package com.chbachman.toron.api.pushshift
 
+import com.chbachman.toron.api.reddit.RedditPost
 import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource
 import okio.utf8Size
+import org.mapdb.DataInput2
+import org.mapdb.DataOutput2
+import org.mapdb.Serializer
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
 import kotlin.experimental.and
 import kotlin.experimental.or
 
@@ -42,7 +50,8 @@ data class PushShift(
     val score: Int,
     val selftext: String? = null,
     val title: String,
-    val url: String
+    val url: String,
+    val fetched: LocalDate
 ) {
     val episode: IntRange? by lazy {
         val str = Regex(".*(?:Episodes?|Ep\\.?)\\s*([\\d-]+).*", RegexOption.IGNORE_CASE)
@@ -87,14 +96,29 @@ data class PushShift(
             .trim()
     }
 
-//    val aniList = GlobalScope.async(start = CoroutineStart.LAZY) {
-//        AniList.search(showTitle)
-//    }
+    val created: LocalDate
+        get() {
+            return LocalDateTime.ofEpochSecond(created_utc, 0, ZoneOffset.UTC).toLocalDate()
+        }
 
-    val size: Long by lazy {
-        val sink = Buffer()
-        write(sink)
-        sink.size
+    suspend fun update(): PushShift {
+        val post = RedditPost(id).data()
+
+        return PushShift(
+            author,
+            created_utc,
+            full_link,
+            id,
+            is_self,
+            post.num_comments,
+            over_18,
+            permalink,
+            post.score,
+            selftext,
+            title,
+            url,
+            LocalDate.now()
+        )
     }
 
     fun write(sink: BufferedSink) {
@@ -108,6 +132,7 @@ data class PushShift(
             .writeInt(score)
             .write(title)
             .write(url)
+            .writeLong(fetched.toEpochDay())
 
         var x: Byte = 0
 
@@ -128,7 +153,52 @@ data class PushShift(
         }
     }
 
-    companion object {
+    companion object: Serializer<PushShift> {
+        override fun serialize(out: DataOutput2, value: PushShift) {
+            out.writeUTF(value.author)
+            out.writeLong(value.created_utc)
+            out.writeUTF(value.full_link)
+            out.writeUTF(value.id)
+            out.writeInt(value.num_comments)
+            out.writeUTF(value.permalink)
+            out.writeInt(value.score)
+            out.writeUTF(value.title)
+            out.writeUTF(value.url)
+            out.writeBoolean(value.is_self)
+            out.writeBoolean(value.over_18)
+            out.writeBoolean(value.selftext != null)
+            out.writeLong(value.fetched.toEpochDay())
+
+            if (value.selftext != null) {
+                out.writeUTF(value.selftext)
+            }
+        }
+
+        override fun deserialize(source: DataInput2, available: Int): PushShift {
+            val author = source.readUTF()
+            val createdUTC = source.readLong()
+            val fullLink = source.readUTF()
+            val id = source.readUTF()
+            val numComments = source.readInt()
+            val permalink = source.readUTF()
+            val score = source.readInt()
+            val title = source.readUTF()
+            val url = source.readUTF()
+            val isSelf = source.readBoolean()
+            val over18 = source.readBoolean()
+            val selfTextExists = source.readBoolean()
+            val fetched = LocalDate.ofEpochDay(source.readLong())
+
+            val selfText =
+                if (selfTextExists) {
+                    source.readUTF()
+                } else {
+                    null
+                }
+
+            return PushShift(author, createdUTC, fullLink, id, isSelf, numComments, over18, permalink, score, selfText, title, url, fetched)
+        }
+
         private const val zeroByte: Byte = 0
 
         fun read(source: BufferedSource): PushShift {
@@ -141,6 +211,7 @@ data class PushShift(
             val score = source.readInt()
             val title = source.read()
             val url = source.read()
+            val fetched = LocalDate.ofEpochDay(source.readLong())
 
             val byte = source.readByte()
 
@@ -155,7 +226,7 @@ data class PushShift(
                     null
                 }
 
-            return PushShift(author, createdUTC, fullLink, id, isSelf, numComments, over18, permalink, score, selfText, title, url)
+            return PushShift(author, createdUTC, fullLink, id, isSelf, numComments, over18, permalink, score, selfText, title, url, fetched)
         }
     }
 }
