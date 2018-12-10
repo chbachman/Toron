@@ -1,10 +1,13 @@
 package com.chbachman.toron.api.reddit
 
 import com.chbachman.toron.api.pushshift.PushShift
+import com.chbachman.toron.api.pushshift.getData
+import com.chbachman.toron.api.pushshift.retry
 import com.chbachman.toron.api.reddit.RedditCache.Companion.update
 import com.chbachman.toron.data
 import com.chbachman.toron.homeDir
 import com.chbachman.toron.serial.*
+import com.chbachman.toron.util.toUTCDate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import okio.buffer
@@ -13,6 +16,8 @@ import okio.source
 import org.mapdb.*
 import java.io.File
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import kotlin.system.measureTimeMillis
 
@@ -23,28 +28,25 @@ class RedditCache {
 
         @JvmStatic
         fun main(args: Array<String>) = runBlocking<Unit> {
+            val set = dbSet<PushShift>("reddit")
+        }
 
-            val newSet = dbSet<PushShift>("redditPosts")
+        suspend fun addNew(set: HTreeMap.KeySet<PushShift>) = transaction {
+            var after = set.maxBy { it.created_utc }!!.created_utc
 
-            transaction {
-                // If it's older than a month
-                val count = newSet
-                    .select {
-                        ChronoUnit.MONTHS.between(it.created, LocalDate.now()) < 1
-                    }
-                    .select {
-                        println(it.created.toString() + " - " + LocalDate.now())
-                        println(ChronoUnit.MONTHS.between(it.created, LocalDate.now()))
-                        ChronoUnit.MONTHS.between(it.created, LocalDate.now()) in 1..6
-                    }.select {
-                        ChronoUnit.MONTHS.between(it.created, it.fetched) < 1
-                    }.count()
+            while (true) {
+                println("Fetching Date: " + after.toUTCDate())
 
-                println(count)
+                val fetched = getData(after) ?: return
+
+                set.addAll(fetched)
+
+                after = fetched.maxBy { it.created_utc }!!.created_utc
+                delay(200)
             }
         }
 
-        suspend fun updateFinal(set: HTreeMap.KeySet<PushShift>) {
+        suspend fun updateFinal(set: HTreeMap.KeySet<PushShift>) = transaction {
             // Update last time if greater than 6 months old.
             set
                 .select {
@@ -52,17 +54,6 @@ class RedditCache {
                 }.select {
                     ChronoUnit.MONTHS.between(it.created, it.fetched) < 6
                 }.update()
-        }
-
-        fun readBackup(): List<PushShift> {
-            val source = File("/Users/Chandler/Desktop/Toron/newBinary").source().buffer()
-
-            val list = mutableListOf<PushShift>()
-            while(!source.exhausted()) {
-                list.add(PushShift.read(source))
-            }
-
-            return list
         }
 
         private suspend fun MutableSequence<PushShift>.update() {

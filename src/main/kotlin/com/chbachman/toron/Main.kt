@@ -4,6 +4,7 @@ import com.chbachman.toron.api.anilist.AniList
 import com.chbachman.toron.api.pushshift.PushShift
 import com.chbachman.toron.api.reddit.RedditSearch
 import com.chbachman.toron.api.reddit.RedditSearchPostData
+import com.chbachman.toron.serial.dbSet
 import com.fasterxml.jackson.databind.SerializationFeature
 import io.ktor.application.call
 import io.ktor.application.install
@@ -86,15 +87,10 @@ data class GroupedData(
 )
 
 val folder = File(homeDir, "toron/database")
-val out = File(folder, "database.json")
-val error = File(folder, "error.txt")
-val runs = File(folder, "runs.txt")
-val originalData = File(folder, "originalBinary")
 val data = File(folder, "result")
-val result = File(folder, "result2")
 
 fun main(args: Array<String>) = runBlocking<Unit> {
-    val originalList = loadData()
+    val originalList = dbSet<PushShift>("reddit")
     val list = originalList
         .asSequence()
         .filter { it.num_comments > 0 }
@@ -153,24 +149,6 @@ fun main(args: Array<String>) = runBlocking<Unit> {
         }
     }
     server.start(wait = true)
-}
-
-fun writeData(file: File, list: List<PushShift>) {
-    val sink = file.sink().buffer()
-    list.forEach { it.write(sink) }
-    sink.flush()
-}
-
-fun loadData(): List<PushShift> {
-    val buffer = data.source().buffer()
-
-    val list = mutableListOf<PushShift>()
-
-    while (!buffer.exhausted()) {
-        list.add(PushShift.read(buffer))
-    }
-
-    return list
 }
 
 suspend fun getRequestData(): RedditSearch {
