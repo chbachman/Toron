@@ -3,7 +3,10 @@ package com.chbachman.toron.serial
 import okio.BufferedSink
 import okio.BufferedSource
 import okio.utf8Size
-import kotlin.reflect.*
+import kotlin.reflect.KClass
+import kotlin.reflect.KParameter
+import kotlin.reflect.KProperty1
+import kotlin.reflect.KType
 import kotlin.reflect.full.createType
 import kotlin.reflect.full.declaredMemberProperties
 import kotlin.reflect.full.findAnnotation

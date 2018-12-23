@@ -1,8 +1,8 @@
 package com.chbachman.toron.api.anilist
 
 import com.beust.klaxon.Json
-import com.beust.klaxon.Klaxon
 import com.chbachman.toron.serial.Cache
+import com.chbachman.toron.util.parseJSON
 import io.ktor.client.HttpClient
 import io.ktor.client.request.post
 import io.ktor.content.TextContent
@@ -68,8 +68,6 @@ data class AniList(
 ) {
     companion object {
         private val client = HttpClient()
-        private val klaxon = Klaxon()
-
         private val gql = loadFile("series_search.gql")
             .readText()
             .replace("\n".toRegex(), "")
@@ -82,7 +80,7 @@ data class AniList(
                 body = TextContent("{\"query\": \"$gql\", \"variables\": {\"query\": \"$query\"}}", contentType = ContentType.Application.Json)
             }
 
-            klaxon.parse<GraphQLData>(response)!!.data.page
+            response.parseJSON<GraphQLData>()!!.data.page
         }
 
         suspend fun search(query: String): List<AniList> {

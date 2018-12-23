@@ -11,26 +11,27 @@ val databaseDir = File(homeDir, "database")
 
 val mainDB = createDB("toron.db")
 
-inline fun <reified T> dbList(name: String, db: DB = mainDB): IndexTreeList<T> {
-    val serial = T::class.companionObjectInstance as Serializer<T>
-    return db.indexTreeList(name, serial).createOrOpen()
-}
+inline fun <reified T> dbList(name: String, db: DB = mainDB): IndexTreeList<T> =
+    db.indexTreeList(name, serializer<T>()).createOrOpen()
 
-inline fun <reified T> dbSet(name: String, db: DB = mainDB): HTreeMap.KeySet<T> {
-    val serial = T::class.companionObjectInstance as Serializer<T>
-    return db.hashSet(name, serial).createOrOpen()
-}
+inline fun <reified T> dbSet(name: String, db: DB = mainDB): HTreeMap.KeySet<T> =
+    db.hashSet(name, serializer<T>()).createOrOpen()
 
-inline fun <reified T, reified K> dbMap(name: String, db: DB = mainDB): HTreeMap<T, K> {
-    val serialT = T::class.companionObjectInstance as Serializer<T>
-    val serialK = K::class.companionObjectInstance as Serializer<K>
-    return db.hashMap(name, serialT, serialK).createOrOpen()
-}
+inline fun <reified T, reified K> dbMap(name: String, db: DB = mainDB): HTreeMap<T, K> =
+    db.hashMap(name, serializer<T>(), serializer<K>()).createOrOpen()
 
 inline fun <T> transaction(db: DB = mainDB, closure: () -> T): T {
     val temp = closure()
     db.commit()
     return temp
+}
+
+inline fun <reified T> serializer(): Serializer<T> {
+    return when (T::class) {
+        String::class -> Serializer.STRING
+        Long::class -> Serializer.LONG
+        else -> T::class.companionObjectInstance
+    } as Serializer<T>
 }
 
 fun createDB(name: String): DB =

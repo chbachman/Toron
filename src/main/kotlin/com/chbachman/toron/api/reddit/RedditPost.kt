@@ -1,26 +1,26 @@
-package com.chbachman.toron.api.pushshift
+package com.chbachman.toron.api.reddit
 
-import com.chbachman.toron.api.reddit.RedditPost
 import com.chbachman.toron.util.*
 import org.mapdb.DataInput2
 import org.mapdb.DataOutput2
 import org.mapdb.Serializer
-import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 
-data class PushShift(
+data class RedditPost(
     val author: String,
-    val created_utc: Long,
-    val full_link: String,
+    val createdUtc: Long,
     val id: String,
-    val is_self: Boolean,
-    val num_comments: Int,
-    val over_18: Boolean,
+    val isSelf: Boolean,
+    val numComments: Int,
+    val over18: Boolean,
     val permalink: String,
     val score: Int,
     val selftext: String? = null,
     val title: String,
     val url: String,
-    val fetched: LocalDate = LocalDate.now()
+    val fetched: LocalDateTime = LocalDateTime.now()
 ) {
     val episode: IntRange? by lazy {
         val str = Regex(".*(?:Episodes?|Ep\\.?)\\s*([\\d-]+).*", RegexOption.IGNORE_CASE)
@@ -54,54 +54,50 @@ data class PushShift(
             .trim()
     }
 
-    val created: LocalDate
-        get() = created_utc.toUTCDate().toLocalDate()
+    val created: LocalDateTime
+        get() = createdUtc.toUTCDate()
 
-    suspend fun update(): PushShift {
-        val post = RedditPost(id).data()
+    val outdated: Boolean
+        get() =
+            when (created.daysAgo) {
+                in 0..7 -> fetched.hoursAgo > 1
+                in 8..31 -> fetched.daysAgo > 1
+                in 32..31*6 -> fetched.daysAgo > 7
+                else -> fetched.minus(created, ChronoUnit.MONTHS) > 6
+            }
 
-        return PushShift(
-            author,
-            created_utc,
-            full_link,
-            id,
-            is_self,
-            post.num_comments,
-            over_18,
-            permalink,
-            post.score,
-            selftext,
-            title,
-            url,
-            LocalDate.now()
+    fun update(post: RedditPost): RedditPost {
+        return copy(
+            numComments = post.numComments,
+            score = post.score,
+            fetched = LocalDateTime.now()
         )
     }
 
-    companion object: Serializer<PushShift> {
-        override fun serialize(out: DataOutput2, value: PushShift) {
+    companion object: Serializer<RedditPost> {
+        override fun serialize(out: DataOutput2, value: RedditPost) {
             out.writeUTF(value.author)
-            out.writeLong(value.created_utc)
-            out.writeUTF(value.full_link)
+            out.writeLong(value.createdUtc)
             out.writeUTF(value.id)
-            out.writeInt(value.num_comments)
+            out.writeInt(value.numComments)
             out.writeUTF(value.permalink)
             out.writeInt(value.score)
             out.writeUTF(value.title)
             out.writeUTF(value.url)
-            out.writeBoolean(value.is_self)
-            out.writeBoolean(value.over_18)
+            out.writeBoolean(value.isSelf)
+            out.writeBoolean(value.over18)
             out.writeBoolean(value.selftext != null)
-            out.writeLong(value.fetched.toEpochDay())
+            out.writeLong(value.fetched.toEpochSecond(ZoneOffset.UTC))
+            out.writeInt(value.fetched.nano)
 
             if (value.selftext != null) {
                 out.writeUTF(value.selftext)
             }
         }
 
-        override fun deserialize(source: DataInput2, available: Int): PushShift {
+        override fun deserialize(source: DataInput2, available: Int): RedditPost {
             val author = source.readUTF()
             val createdUTC = source.readLong()
-            val fullLink = source.readUTF()
             val id = source.readUTF()
             val numComments = source.readInt()
             val permalink = source.readUTF()
@@ -111,7 +107,9 @@ data class PushShift(
             val isSelf = source.readBoolean()
             val over18 = source.readBoolean()
             val selfTextExists = source.readBoolean()
-            val fetched = LocalDate.ofEpochDay(source.readLong())
+            val utcSecond = source.readLong()
+            val nano = source.readInt()
+            val fetched = LocalDateTime.ofEpochSecond(utcSecond, nano, ZoneOffset.UTC)
 
             val selfText =
                 if (selfTextExists) {
@@ -120,7 +118,7 @@ data class PushShift(
                     null
                 }
 
-            return PushShift(author, createdUTC, fullLink, id, isSelf, numComments, over18, permalink, score, selfText, title, url, fetched)
+            return RedditPost(author, createdUTC, id, isSelf, numComments, over18, permalink, score, selfText, title, url, fetched)
         }
     }
 }

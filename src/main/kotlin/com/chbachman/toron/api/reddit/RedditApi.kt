@@ -1,80 +1,69 @@
 package com.chbachman.toron.api.reddit
 
-import com.beust.klaxon.JsonArray
-import com.beust.klaxon.JsonObject
-import com.beust.klaxon.Klaxon
-import com.beust.klaxon.Parser
+import com.chbachman.toron.api.pushshift.retry
+import com.chbachman.toron.util.parseJSON
 import io.ktor.client.HttpClient
+import io.ktor.client.features.defaultRequest
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.http.userAgent
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.async
 
-private val userAgent = "kotlin:com.chbachman.toron:0.0.1"
-private val client = HttpClient()
+private const val userAgent = "kotlin:com.chbachman.toron:0.0.1"
+private const val searchUrl = "https://api.reddit.com/r/anime/new"
+private const val infoUrl = "https://api.reddit.com/api/info"
 
-class RedditPost constructor(
-    val id: String
-) {
-    suspend fun data(): RedditCommentPost {
-        val response = client.get<String>("https://api.reddit.com/comments/$id") {
-            userAgent(userAgent)
-        }
-
-        val obj = (Parser().parse(StringBuilder(response)) as JsonArray<JsonObject>).first()
-
-        return Klaxon().parseFromJsonObject<RedditCommentRequest>(obj)!!.data.children.first().data
+private val client = HttpClient().config {
+    defaultRequest {
+        userAgent(userAgent)
     }
 }
 
-class RedditSearch private constructor(
-    val search: String,
-    val params: List<Pair<String, String>> = emptyList(),
-    private val previousData: List<RedditSearchPostData>?,
-    private val after: String?,
-    private val previousCount: Int
+data class RedditSearchResult(
+    val data: List<RedditPost>,
+    val after: String?,
+    val count: Int
 ) {
-    constructor(
-        search: String,
-        params: List<Pair<String, String>> = emptyList()
-    ): this(search, params, null,null, 0)
+    suspend fun next() = RedditApi.getNew(this)
+}
 
-    private val asyncRequest = GlobalScope.async(start = CoroutineStart.LAZY) {
-        val response = client.get<String>("https://api.reddit.com/r/anime/search") {
-            userAgent(userAgent)
-            params.forEach { parameter(it.first, it.second) }
-            parameter("q", search)
-            parameter("count", previousCount)
-            parameter("after", after)
-            parameter("sort", "new")
-            parameter("t", "all")
-            parameter("type", "sr")
+class RedditApi {
+    companion object {
+        suspend fun update(list: List<String>) = retry(3) {
+            val raw = client.get<String>(infoUrl) {
+                parameter("id", list.joinToString(",") { "t3_$it" })
+            }
+
+            parseResponse(raw)
         }
 
-        Klaxon().parse<RedditSearchRequest>(response)!!
-    }
+        suspend fun getNew(after: RedditSearchResult) = retry(3) {
+            val raw = client.get<String>(searchUrl) {
+                parameter("count", after.count)
+                parameter("after", after.after)
+            }
 
-    private val asyncData = GlobalScope.async(start = CoroutineStart.LAZY) {
-        if (previousData == null) {
-            asyncRequest.await().data.children
-        } else {
-            previousData + asyncRequest.await().data.children
+            parseResponse(raw, after.count)
         }
-    }
 
-    suspend fun data(): List<RedditSearchPostData> {
-        return asyncData.await()
-    }
+        suspend fun getNew() = retry(3) {
+            val raw = client.get<String>(searchUrl)
 
-    suspend fun loadMore(): RedditSearch {
-        return RedditSearch(
-            search,
-            params,
-            data(),
-            asyncRequest.await().data.after,
-            previousCount + asyncRequest.await().data.dist
-        )
+            parseResponse(raw)
+        }
+
+        private fun parseResponse(raw: String, previousCount: Int = 0): RedditSearchResult? {
+            val response = raw.parseJSON<RedditSearchRequest>() ?: return null
+            val data = response.data.children.map { it.data }
+
+            if (data.isEmpty()) {
+                return null
+            }
+
+            return RedditSearchResult(
+                data,
+                response.data.after,
+                previousCount + response.data.dist
+            )
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.chbachman.toron.util
 
 import java.time.LocalDateTime
 import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 
 fun Long.toUTCDate(): LocalDateTime =
     LocalDateTime.ofEpochSecond(this, 0, ZoneOffset.UTC)
@@ -29,3 +30,23 @@ inline fun String.deleteInside(start: (Char) -> Boolean, end: (Char) -> Boolean)
 
 fun String.remove(value: String, ignoreCase: Boolean = false)
     = this.replace(value, "", ignoreCase)
+
+val LocalDateTime.monthsAgo: Long
+    get() = ChronoUnit.MONTHS.between(this, LocalDateTime.now())
+
+val LocalDateTime.daysAgo: Long
+    get() = ChronoUnit.DAYS.between(this, LocalDateTime.now())
+
+val LocalDateTime.hoursAgo: Long
+    get() = ChronoUnit.HOURS.between(this, LocalDateTime.now())
+
+val LocalDateTime.minutesAgo: Long
+    get() = ChronoUnit.MINUTES.between(this, LocalDateTime.now())
+
+operator fun LocalDateTime.minus(other: LocalDateTime): Long {
+    return minus(other, ChronoUnit.DAYS)
+}
+
+fun LocalDateTime.minus(other: LocalDateTime, unit: ChronoUnit = ChronoUnit.DAYS): Long {
+    return unit.between(this, other)
+}

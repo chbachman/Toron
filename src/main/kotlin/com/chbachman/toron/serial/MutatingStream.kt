@@ -2,19 +2,11 @@ package com.chbachman.toron.serial
 
 import org.mapdb.HTreeMap
 
-class MutableSequence<T>(
-    val list: HTreeMap.KeySet<T>,
-    filter: ((T) -> Boolean)
-) {
-    val filters = mutableListOf(filter)
-    fun select(closure: (T) -> Boolean): MutableSequence<T> {
-        filters.add(closure)
-        return this
-    }
+open class InPlaceDriver<T>(val iterator: InPlaceIterator<T>) {
+    val filters = mutableListOf<(T) -> Boolean>()
 
     inline fun replace(closure: (T) -> T) = modify { element, iterator ->
-        iterator.remove()
-        list.add(closure(element))
+        iterator.replace(closure(element))
     }
 
     fun delete() = modify { _, iterator ->
@@ -31,10 +23,9 @@ class MutableSequence<T>(
         return total
     }
 
-    inline fun modify(closure: (T, MutableIterator<T?>) -> Unit) {
-        val iterator = list.iterator()
+    inline fun modify(closure: (T, InPlaceIterator<T>) -> Unit) {
         while (iterator.hasNext()) {
-            val element = iterator.next()!!
+            val element = iterator.next()
 
             if (filters.all { it(element) }) {
                 closure(element, iterator)
@@ -43,6 +34,59 @@ class MutableSequence<T>(
     }
 }
 
-fun <T> HTreeMap.KeySet<T>.select(closure: (T) -> Boolean): MutableSequence<T> {
-    return MutableSequence<T>(this, closure)
+fun <T> InPlaceDriver<T>.select(closure: (T) -> Boolean): InPlaceDriver<T> {
+    filters.add(closure)
+    return this
 }
+
+class InPlaceGroupDriver<T>(
+    val groupIterator: InPlaceGroupIterator<T>
+): InPlaceDriver<T>(groupIterator) {
+    inline fun replaceGroup(n: Int, closure: (List<T>) -> List<T>) {
+        while (iterator.hasNext()) {
+            val original = grab(n)
+            val changed = closure(original)
+
+            original.zip(changed).forEach { groupIterator.replace(it.first, it.second) }
+        }
+    }
+
+    inline fun forEachGroup(n: Int, closure: (List<T>) -> Unit) {
+        while(iterator.hasNext()) {
+            val group = grab(n)
+
+            if (!group.isEmpty()) {
+                closure(group)
+            }
+        }
+    }
+
+    fun grab(n: Int): List<T> {
+        val list = mutableListOf<T>()
+        var remaining = n
+
+        while (iterator.hasNext() && remaining > 0) {
+            val element = iterator.next()
+            if (filters.all { it(element)} ) {
+                list.add(element)
+                remaining--
+            }
+        }
+
+        return list
+    }
+}
+
+fun <T> InPlaceGroupDriver<T>.select(closure: (T) -> Boolean): InPlaceGroupDriver<T> {
+    filters.add(closure)
+    return this
+}
+
+fun <K, V> HTreeMap<K, V>.select(filter: (Pair<K, V>) -> Boolean) =
+    InPlaceGroupDriver(InPlaceMap(this)).select(filter)
+
+fun <K, V> HTreeMap<K, V>.selectValues(filter: (V) -> Boolean) =
+    InPlaceDriver(InPlaceMapValue(this)).select(filter)
+
+fun <K, V> HTreeMap<K, V>.selectAllValues(filter: (V) -> Boolean) =
+    InPlaceDriver(InPlaceMapValue(this))
