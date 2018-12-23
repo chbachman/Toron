@@ -8,18 +8,19 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 
-data class RedditPost(
+data class RedditPost @JvmOverloads constructor(
     val author: String,
+    @FuzzyLong
     val createdUtc: Long,
     val id: String,
     val isSelf: Boolean,
     val numComments: Int,
-    val over18: Boolean,
     val permalink: String,
     val score: Int,
-    val selftext: String? = null,
     val title: String,
     val url: String,
+    val over18: Boolean = false,
+    val selftext: String? = null,
     val fetched: LocalDateTime = LocalDateTime.now()
 ) {
     val episode: IntRange? by lazy {
@@ -60,10 +61,13 @@ data class RedditPost(
     val outdated: Boolean
         get() =
             when (created.daysAgo) {
-                in 0..7 -> fetched.hoursAgo > 1
-                in 8..31 -> fetched.daysAgo > 1
-                in 32..31*6 -> fetched.daysAgo > 7
-                else -> fetched.minus(created, ChronoUnit.MONTHS) > 6
+                in 0..7 -> fetched.hoursAgo > 1 // One Week
+                in 7..14 -> fetched.daysAgo > 1 // Two Weeks
+                in 14..31 -> fetched.daysAgo > 2 // Three-Four Weeks
+                in 31..31*2 -> fetched.daysAgo > 7 // 2 Months
+                in 31*2..31*3 -> fetched.daysAgo > 14 // 3 Months
+                in 31*3..31*6 -> fetched.daysAgo > 28 // 3-6 Months
+                else -> fetched.minus(created, ChronoUnit.MONTHS) > 6 // Archived Posts
             }
 
     fun update(post: RedditPost): RedditPost {
@@ -118,7 +122,20 @@ data class RedditPost(
                     null
                 }
 
-            return RedditPost(author, createdUTC, id, isSelf, numComments, over18, permalink, score, selfText, title, url, fetched)
+            return RedditPost(
+                author = author,
+                createdUtc = createdUTC,
+                id = id,
+                isSelf = isSelf,
+                numComments = numComments,
+                permalink = permalink,
+                score = score,
+                title = title,
+                url = url,
+                over18 = over18,
+                selftext = selfText,
+                fetched = fetched
+            )
         }
     }
 }
