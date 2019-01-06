@@ -138,7 +138,7 @@ class CacheFile<In: Any, Out: Any>(
 }
 
 private const val cacheFiles = 16
-private val cacheDir = File(homeDir, "toron/cache")
+private val cacheDir = File(homeDir, "cache")
 
 class Cache<In: Any, Out: Any>(
     private val cacheName: String,
@@ -155,6 +155,10 @@ class Cache<In: Any, Out: Any>(
         ): Cache<In, Out> {
             return Cache(cacheName, expired, produce, In::class, Out::class)
         }
+    }
+
+    init {
+        cacheDir.mkdir()
     }
 
     private val caches = List(cacheFiles) { index ->

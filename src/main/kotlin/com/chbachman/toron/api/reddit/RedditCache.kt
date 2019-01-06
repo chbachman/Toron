@@ -1,62 +1,104 @@
 package com.chbachman.toron.api.reddit
 
-import com.chbachman.toron.api.pushshift.PushShiftApi
 import com.chbachman.toron.serial.dbMap
 import com.chbachman.toron.serial.mainDB
 import com.chbachman.toron.serial.select
 import com.chbachman.toron.serial.transaction
+import com.chbachman.toron.util.toUTC
 import com.chbachman.toron.util.toUTCDate
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import mu.KotlinLogging
 import org.mapdb.HTreeMap
-import kotlin.system.measureTimeMillis
+import java.time.LocalDateTime
+import kotlin.concurrent.fixedRateTimer
 
 class RedditCache {
     companion object {
-        @JvmStatic
-        fun main(args: Array<String>) = runBlocking<Unit> {
+        private val logger = KotlinLogging.logger {}
+
+        suspend fun start() {
             val map = dbMap<String, RedditPost>("reddit")
 
-            addNewFast(map)
-            updateFast(map)
+            // Run every 10 minutes.
+            fixedRateTimer(name = "Update Reddit", period = 10 * 60 * 1000) {
+                logger.debug { "Starting Reddit update." }
+
+                val result = GlobalScope.launch {
+                    addNewFast(map)
+                    updateFast(map)
+                }
+
+                runBlocking { result.join() }
+
+                logger.debug { "Finished Reddit update." }
+            }
         }
 
-        private suspend fun addNew(set: HTreeMap<String, RedditPost>) = transaction {
-            var after = set.values.filterNotNull().maxBy { it.createdUtc }!!.createdUtc
+        // This pulls from PushShift.
+        // This guarantees that we will never miss any posts after the most recent.
+        private suspend fun addNew(
+            set: HTreeMap<String, RedditPost>,
+            start: LocalDateTime = set.values.filterNotNull().map { it.created }.max()!!,
+            end: LocalDateTime = LocalDateTime.now()
+        ) = transaction {
+            var after = start.toUTC()
 
             while (true) {
-                println("Fetching Date: " + after.toUTCDate())
+                logger.debug { "Fetching Date: ${after.toUTCDate()}" }
 
-                val fetched = PushShiftApi.getData(after) ?: return
+                val fetched = PushShiftApi.getData(after) ?: break
 
                 set.putAll(fetched.map { it.id to it })
 
-                after = fetched.maxBy { it.createdUtc }!!.createdUtc
+                val max = fetched.maxBy { it.createdUtc }!!
+
+                after = max.createdUtc
+
+                if (max.created > end) {
+                    break
+                }
+
                 delay(200)
             }
         }
 
+        // Pulls from Reddit.
+        // Since this one starts at the latest and goes backwards it can miss posts.
         private suspend fun addNewFast(set: HTreeMap<String, RedditPost>) = transaction {
             var result = RedditApi.getNew() ?: return
             var seenCount = 0
+            var oldestDate = LocalDateTime.now()
+            val newestDate = set.map { it.value.created }.max()!!
 
             while (true) {
                 val seen = result.data.all {
                     set.containsKey(it.id)
                 }
 
-                println("Amount Seen Already: $seenCount, Seen this one: $seen")
+                logger.debug { "Amount Seen Already: $seenCount, Seen this one: $seen" }
+                oldestDate = minOf(result.data.map { it.created }.min()!!, oldestDate)
+                logger.debug { "Oldest Date Seen So Far: $oldestDate" }
 
                 if (seen) {
                     seenCount++
 
                     if (seenCount > 3) {
-                        return
+                        break
                     }
                 }
 
                 set.putAll(result.data.map { it.id to it })
-                result = result.next() ?: return
+                delay(500)
+                result = result.next() ?: break
+            }
+
+            logger.debug { newestDate }
+            if (oldestDate > newestDate) {
+                logger.debug { "Couldn't get back to where we were before." }
+                addNew(set, newestDate, oldestDate)
             }
         }
 
@@ -66,12 +108,12 @@ class RedditCache {
             set.select { it.second.outdated }.replaceGroup(100) { list ->
                 val new = RedditApi.update(list.map { it.first }) ?: return@replaceGroup list
 
-                println("Have $count posts left.")
+                logger.debug { "Have $count posts left." }
                 count -= list.size
 
                 i++
                 if (i > 10) {
-                    println("Adding changes so far.")
+                    logger.debug { "Adding changes so far." }
                     i = 0
                     mainDB.commit()
                 }

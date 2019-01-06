@@ -51,7 +51,12 @@ data class RedditPost @JvmOverloads constructor(
             .remove("Spoilers", ignoreCase = true)
             .remove("Thread", ignoreCase = true)
             .replace(Regex(":?\\s*(?:Episodes?|Ep\\.?)\\s*([\\d-]+)", RegexOption.IGNORE_CASE), "")
+            .remove("Final", ignoreCase = true)
+            .remove("Episode", ignoreCase = true)
             .replace(Regex("\\s+-\\s+"), " ")
+            .trim()
+            .removeSuffix("-")
+            .removeSuffix("–")
             .trim()
     }
 
@@ -74,6 +79,7 @@ data class RedditPost @JvmOverloads constructor(
         return copy(
             numComments = post.numComments,
             score = post.score,
+            selftext = post.selftext,
             fetched = LocalDateTime.now()
         )
     }

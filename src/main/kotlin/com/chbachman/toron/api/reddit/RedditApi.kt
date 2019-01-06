@@ -1,12 +1,28 @@
 package com.chbachman.toron.api.reddit
 
-import com.chbachman.toron.api.pushshift.retry
-import com.chbachman.toron.util.parseJSON
+import com.chbachman.toron.util.parseJSONCamel
+import com.chbachman.toron.util.retry
 import io.ktor.client.HttpClient
 import io.ktor.client.features.defaultRequest
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.http.userAgent
+
+private data class RedditSearchPostData(
+    val kind: String,
+    val data: RedditPost
+)
+
+private data class RedditSearchData(
+    val children: List<RedditSearchPostData>,
+    val after: String? = null,
+    val dist: Int
+)
+
+private data class RedditSearchRequest(
+    val kind: String,
+    val data: RedditSearchData
+)
 
 private const val userAgent = "kotlin:com.chbachman.toron:0.0.1"
 private const val searchUrl = "https://api.reddit.com/r/anime/new"
@@ -52,7 +68,7 @@ class RedditApi {
         }
 
         private fun parseResponse(raw: String, previousCount: Int = 0): RedditSearchResult? {
-            val response = raw.parseJSON<RedditSearchRequest>() ?: return null
+            val response = raw.parseJSONCamel<RedditSearchRequest>() ?: return null
             val data = response.data.children.map { it.data }
 
             if (data.isEmpty()) {

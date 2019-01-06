@@ -7,6 +7,9 @@ import java.time.temporal.ChronoUnit
 fun Long.toUTCDate(): LocalDateTime =
     LocalDateTime.ofEpochSecond(this, 0, ZoneOffset.UTC)
 
+fun LocalDateTime.toUTC(): Long =
+    this.toEpochSecond(ZoneOffset.UTC)
+
 fun Char.isOpening(): Boolean =
     this == '(' || this == '[' || this == '{' || this == '<'
 
@@ -49,4 +52,16 @@ operator fun LocalDateTime.minus(other: LocalDateTime): Long {
 
 fun LocalDateTime.minus(other: LocalDateTime, unit: ChronoUnit = ChronoUnit.DAYS): Long {
     return unit.between(this, other)
+}
+
+inline fun <T> retry(times: Int, closure: () -> T?): T? {
+    repeat(times) {
+        val result = closure()
+
+        if (result != null) {
+            return result
+        }
+    }
+
+    return null
 }

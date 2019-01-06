@@ -1,8 +1,12 @@
 package com.chbachman.toron
 
 import com.chbachman.toron.api.anilist.AniList
+import com.chbachman.toron.api.reddit.RedditCache
 import com.chbachman.toron.api.reddit.RedditPost
-import com.chbachman.toron.serial.dbSet
+import com.chbachman.toron.serial.dbMap
+import com.chbachman.toron.util.deleteInside
+import com.chbachman.toron.util.isClosing
+import com.chbachman.toron.util.isOpening
 import com.fasterxml.jackson.databind.SerializationFeature
 import io.ktor.application.call
 import io.ktor.application.install
@@ -17,6 +21,7 @@ import io.ktor.routing.routing
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.runBlocking
+import mu.KotlinLogging
 import java.io.File
 
 val homeDir = File(System.getProperty("user.home"), "toron")
@@ -27,12 +32,17 @@ data class GroupedData(
 )
 
 fun main(args: Array<String>) = runBlocking<Unit> {
-    val originalList = dbSet<RedditPost>("reddit")
+    val logger = KotlinLogging.logger {}
+    RedditCache.start()
+
+    val originalList = dbMap<String, RedditPost>("reddit")
     val list = originalList
         .asSequence()
-        .filter { it.numComments > 0 }
-        .filter { it.score > 0 }
+        .map { it.value }
+        .filter { it.numComments > 2 }
+        .filter { it.score > 1 }
         .filter { it.isSelf }
+        .filterNot { it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank() }
         .filter { it.title.contains(Regex("\\d")) }
         .filter { it.episode != null }
         .filterNot { it.title.contains("watch", ignoreCase = true) }
@@ -43,18 +53,22 @@ fun main(args: Array<String>) = runBlocking<Unit> {
         .groupBy { it.showTitle }
         .toList()
         .map { it.first to it.second.sortedBy { it.episode?.first } }
-        .filter { it.second.size > 20 }
-        // Pick the episode discussion with a higher score if we have two.
         .map { (title, episodes) ->
             title to episodes
                 .groupBy { it.episode }
                 .mapNotNull { (_, episodes) ->
                     episodes.maxBy { it.score }
                 }
+        }.sortedByDescending { (_, post) ->
+            post.sumBy { it.score }
         }
+
+    val searched = grouped
         .map { GroupedData(AniList.search(it.first).firstOrNull(), it.second) }
+        .groupBy { it.showInfo?.id to it.showInfo?.season }
+        .map { GroupedData(it.value.first().showInfo, it.value.flatMap { it.discussion }) }
         .filter { it.showInfo != null }
-        //.sortedByDescending { it.discussion.size }
+        .sortedBy { it.showInfo?.title?.english }
 
     val server = embeddedServer(Netty, port = 8081) {
         install(ContentNegotiation) {
@@ -68,11 +82,12 @@ fun main(args: Array<String>) = runBlocking<Unit> {
         routing {
             route("/toron") {
                 get("/list") {
-                    call.respond(grouped.map { it.showInfo })
+                    logger.debug { "Fetching List" }
+                    call.respond(searched.map { it.showInfo })
                 }
                 get("/show/{id}") {
                     val id = call.parameters["id"]?.toInt()
-                    val result = grouped.find { show -> show.showInfo?.id == id }
+                    val result = searched.find { show -> show.showInfo?.id == id }
 
                     if (result != null) {
                         call.respond(result)
