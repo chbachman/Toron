@@ -47,33 +47,6 @@ data class CoverImage(
     val extraLarge: String
 )
 
-private fun loadFile(name: String): URL {
-    return Thread.currentThread().contextClassLoader.getResource(name)
-}
-
-data class Page(
-    val media: List<AniList>
-) {
-    companion object: Serializer<Page> {
-        override fun serialize(out: DataOutput2, value: Page) {
-            out.writeList(AniList.writer(), value.media)
-        }
-
-        override fun deserialize(input: DataInput2, available: Int): Page {
-            return Page(input.readList(AniList.reader()))
-        }
-    }
-}
-
-private data class GraphQLDataPage(
-    @Json("Page")
-    val page: Page
-)
-
-private data class GraphQLData(
-    val data: GraphQLDataPage
-)
-
 data class AniList(
     val id: Int,
     val idMal: Int? = null,
@@ -93,8 +66,6 @@ data class AniList(
     val stats: MediaStats
 ) {
     companion object: Serializer<AniList> {
-        private val logger = KotlinLogging.logger {}
-
         override fun serialize(out: DataOutput2, value: AniList) {
             out.writeInt(value.id)
             out.writeIf(DataOutput2::writeInt, value.idMal)
@@ -162,33 +133,6 @@ data class AniList(
                 description = description,
                 stats = stats
             )
-        }
-
-        private val client = HttpClient()
-        private val gql = loadFile("series_search.gql")
-            .readText()
-            .replace("\n".toRegex(), "")
-
-        private val cacheMap = dbMap<String, Page>("anilist-cache")
-
-        suspend fun search(unsanitizedQuery: String): List<AniList> = transaction {
-            val cached = cacheMap[unsanitizedQuery]
-
-            if (cached == null) {
-                logger.debug { "Loading `$unsanitizedQuery`" }
-                delay(1000)
-                val query = unsanitizedQuery.replace("\"", "\\\"")
-                val response = client.post<String>("https://graphql.anilist.co") {
-                    body = TextContent(""" {"query": "$gql", "variables": {"query": "$query"}} """, contentType = ContentType.Application.Json)
-                }
-
-                val result = response.parseJSON<GraphQLData>()!!.data.page
-
-                cacheMap[unsanitizedQuery] = result
-                result.media
-            } else {
-                cached.media
-            }
         }
     }
 }

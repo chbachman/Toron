@@ -6,9 +6,7 @@ import com.chbachman.toron.serial.select
 import com.chbachman.toron.serial.transaction
 import com.chbachman.toron.util.toUTC
 import com.chbachman.toron.util.toUTCDate
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
 import org.mapdb.HTreeMap
@@ -26,12 +24,10 @@ class RedditCache {
             fixedRateTimer(name = "Update Reddit", period = 10 * 60 * 1000) {
                 logger.debug { "Starting Reddit update." }
 
-                val result = GlobalScope.launch {
+                runBlocking {
                     addNewFast(map)
                     updateFast(map)
                 }
-
-                runBlocking { result.join() }
 
                 logger.debug { "Finished Reddit update." }
             }

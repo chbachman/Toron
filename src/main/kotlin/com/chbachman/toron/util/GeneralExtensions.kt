@@ -1,5 +1,6 @@
 package com.chbachman.toron.util
 
+import java.net.URL
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
@@ -64,4 +65,8 @@ inline fun <T> retry(times: Int, closure: () -> T?): T? {
     }
 
     return null
+}
+
+fun loadFile(name: String): URL {
+    return Thread.currentThread().contextClassLoader.getResource(name)
 }

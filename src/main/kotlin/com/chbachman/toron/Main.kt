@@ -1,9 +1,11 @@
 package com.chbachman.toron
 
 import com.chbachman.toron.api.anilist.AniList
+import com.chbachman.toron.api.anilist.AniListApi
 import com.chbachman.toron.api.reddit.RedditCache
 import com.chbachman.toron.api.reddit.RedditPost
 import com.chbachman.toron.serial.dbMap
+import com.chbachman.toron.serial.select
 import com.chbachman.toron.util.deleteInside
 import com.chbachman.toron.util.isClosing
 import com.chbachman.toron.util.isOpening
@@ -64,7 +66,7 @@ fun main(args: Array<String>) = runBlocking<Unit> {
         }
 
     val searched = grouped
-        .map { GroupedData(AniList.search(it.first).firstOrNull(), it.second) }
+        .map { GroupedData(AniListApi.search(it.first).firstOrNull(), it.second) }
         .groupBy { it.showInfo?.id to it.showInfo?.season }
         .map { GroupedData(it.value.first().showInfo, it.value.flatMap { it.discussion }) }
         .filter { it.showInfo != null }
@@ -83,7 +85,12 @@ fun main(args: Array<String>) = runBlocking<Unit> {
             route("/toron") {
                 get("/list") {
                     logger.debug { "Fetching List" }
-                    call.respond(searched.map { it.showInfo })
+                    val list = searched
+                        .sortedByDescending { (_, posts) -> posts.sumBy { it.score } }
+                        .take(25)
+                        .map { it.showInfo }
+
+                    call.respond(list)
                 }
                 get("/show/{id}") {
                     val id = call.parameters["id"]?.toInt()
