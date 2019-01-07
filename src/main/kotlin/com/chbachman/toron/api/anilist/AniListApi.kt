@@ -10,6 +10,20 @@ import org.mapdb.DataInput2
 import org.mapdb.DataOutput2
 import org.mapdb.Serializer
 
+data class AniListSearch(
+    val media: List<Int>
+) {
+    companion object: Serializer<AniListSearch> {
+        override fun serialize(out: DataOutput2, value: AniListSearch) {
+            out.writeList(DataOutput2::writeInt, value.media)
+        }
+
+        override fun deserialize(input: DataInput2, available: Int): AniListSearch {
+            return AniListSearch(input.readList(DataInput2::readInt))
+        }
+    }
+}
+
 data class AniListPage(
     val media: List<AniList>
 ) {
@@ -42,42 +56,38 @@ class AniListApi {
             "https://graphql.anilist.co"
         )
 
-        private val cacheMap = dbMap<String, AniListPage>("anilist-cache")
+        private val searchCache = dbMap<String, AniListSearch>("anilist-cache")
+        private val anilist = dbMap<Int, AniList>("anilist")
 
         suspend fun search(query: String): List<AniList> = transaction {
-            val cached = cacheMap[query]
+            val cached = searchCache[query]
 
             if (cached == null) {
                 logger.debug { "Loading `$query`" }
                 delay(1000)
 
                 val response = graphQLQuery.get<String>(mapOf("query" to query))
-
                 val result = response.parseJSON<GraphQLData>()!!.data.page
 
-                cacheMap[query] = result
+                // Add to the stored list.
+                result.media.forEach { anilist[it.id] = it }
+
+                // Store the IDs
+                val search = result.media.map { it.id }
+
+                searchCache[query] = AniListSearch(search)
                 result.media
             } else {
-                cached.media
+                cached.media.map { anilist[it]!! }
             }
         }
 
         fun byId(id: Int): AniList? {
-            return cacheMap
-                .values
-                .filterNotNull()
-                .mapNotNull { page ->
-                    page.media.find { it.id == id }
-                }.firstOrNull()
+            return anilist[id]
         }
 
-        suspend fun byMALId(id: Int): AniList? {
-            return cacheMap
-                .values
-                .filterNotNull()
-                .mapNotNull { page ->
-                    page.media.find { it.idMal == id }
-                }.firstOrNull()
+        fun byMALId(id: Int): AniList? {
+            return anilist.values.filterNotNull().find { it.idMal == id }
         }
     }
 }

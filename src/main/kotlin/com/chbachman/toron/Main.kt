@@ -35,9 +35,13 @@ data class GroupedData(
 
 fun main(args: Array<String>) = runBlocking<Unit> {
     val logger = KotlinLogging.logger {}
+
+    logger.debug { "Running on PID: ${ProcessHandle.current().pid()}" }
+
     RedditCache.start()
 
     val originalList = dbMap<String, RedditPost>("reddit")
+
     val list = originalList
         .asSequence()
         .map { it.value }
@@ -47,7 +51,6 @@ fun main(args: Array<String>) = runBlocking<Unit> {
         .filterNot { it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank() }
         .filter { it.title.contains(Regex("\\d")) }
         .filter { it.episode != null }
-        .filterNot { it.title.contains("watch", ignoreCase = true) }
         .toList()
 
     val grouped = list
@@ -101,7 +104,6 @@ fun main(args: Array<String>) = runBlocking<Unit> {
                     } else {
                         call.respond(HttpStatusCode.NotFound)
                     }
-
                 }
             }
 

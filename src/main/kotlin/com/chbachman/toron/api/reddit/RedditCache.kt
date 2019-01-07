@@ -1,9 +1,7 @@
 package com.chbachman.toron.api.reddit
 
-import com.chbachman.toron.serial.dbMap
-import com.chbachman.toron.serial.mainDB
-import com.chbachman.toron.serial.select
-import com.chbachman.toron.serial.transaction
+import com.chbachman.toron.serial.*
+import com.chbachman.toron.util.monthsAgo
 import com.chbachman.toron.util.toUTC
 import com.chbachman.toron.util.toUTCDate
 import kotlinx.coroutines.delay
@@ -27,10 +25,24 @@ class RedditCache {
                 runBlocking {
                     addNewFast(map)
                     updateFast(map)
+                    cleanup(map)
+                    mainDB.getStore().compact()
                 }
 
                 logger.debug { "Finished Reddit update." }
             }
+        }
+
+        private fun cleanup(set: HTreeMap<String, RedditPost>) = transaction {
+            fun archived() = set.selectValues { it.created.monthsAgo > 7 }
+
+            logger.debug { "Started with ${set.size}." }
+
+            archived().selectNot { it.numComments > 2 }.delete()
+            archived().selectNot { it.score > 1 }.delete()
+            archived().selectNot { it.isSelf }.delete()
+
+            logger.debug { "Ended with ${set.size} elements." }
         }
 
         // This pulls from PushShift.

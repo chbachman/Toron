@@ -28,6 +28,7 @@ inline fun <T> transaction(db: DB = mainDB, closure: () -> T): T {
 
 inline fun <reified T> serializer(): Serializer<T> {
     return when (T::class) {
+        Int::class -> Serializer.INTEGER
         String::class -> Serializer.STRING
         Long::class -> Serializer.LONG
         else -> T::class.companionObjectInstance

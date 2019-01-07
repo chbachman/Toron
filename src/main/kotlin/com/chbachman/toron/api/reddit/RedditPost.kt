@@ -1,6 +1,8 @@
 package com.chbachman.toron.api.reddit
 
+import com.chbachman.toron.api.anilist.AniList
 import com.chbachman.toron.util.*
+import kotlinx.coroutines.CoroutineStart
 import org.mapdb.DataInput2
 import org.mapdb.DataOutput2
 import org.mapdb.Serializer
@@ -44,6 +46,16 @@ data class RedditPost @JvmOverloads constructor(
         }
     }
 
+    val season: Int? by lazy {
+        val str = Regex("(\\S*)\\s+(?:Season)\\s+(\\S*)", RegexOption.IGNORE_CASE)
+            .matchEntire(title)
+            ?.groupValues
+
+        println(str)
+
+        0
+    }
+
     val showTitle: String by lazy {
         title
             .deleteInside(Char::isOpening, Char::isClosing)
@@ -59,21 +71,6 @@ data class RedditPost @JvmOverloads constructor(
             .removeSuffix("–")
             .trim()
     }
-
-    val created: LocalDateTime
-        get() = createdUtc.toUTCDate()
-
-    val outdated: Boolean
-        get() =
-            when (created.daysAgo) {
-                in 0..7 -> fetched.hoursAgo > 1 // One Week
-                in 7..14 -> fetched.daysAgo > 1 // Two Weeks
-                in 14..31 -> fetched.daysAgo > 2 // Three-Four Weeks
-                in 31..31*2 -> fetched.daysAgo > 7 // 2 Months
-                in 31*2..31*3 -> fetched.daysAgo > 14 // 3 Months
-                in 31*3..31*6 -> fetched.daysAgo > 28 // 3-6 Months
-                else -> fetched.minus(created, ChronoUnit.MONTHS) > 6 // Archived Posts
-            }
 
     fun update(post: RedditPost): RedditPost {
         return copy(

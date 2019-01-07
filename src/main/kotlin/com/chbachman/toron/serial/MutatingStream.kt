@@ -39,6 +39,11 @@ fun <T> InPlaceDriver<T>.select(closure: (T) -> Boolean): InPlaceDriver<T> {
     return this
 }
 
+fun <T> InPlaceDriver<T>.selectNot(closure: (T) -> Boolean): InPlaceDriver<T> {
+    filters.add { !closure(it) }
+    return this
+}
+
 class InPlaceGroupDriver<T>(
     val groupIterator: InPlaceGroupIterator<T>
 ): InPlaceDriver<T>(groupIterator) {
@@ -84,6 +89,9 @@ fun <T> InPlaceGroupDriver<T>.select(closure: (T) -> Boolean): InPlaceGroupDrive
 
 fun <K, V> HTreeMap<K, V>.select(filter: (Pair<K, V>) -> Boolean) =
     InPlaceGroupDriver(InPlaceMap(this)).select(filter)
+
+fun <K, V> HTreeMap<K, V>.selectValues() =
+    InPlaceDriver(InPlaceMapValue(this))
 
 fun <K, V> HTreeMap<K, V>.selectValues(filter: (V) -> Boolean) =
     InPlaceDriver(InPlaceMapValue(this)).select(filter)
