@@ -69,27 +69,9 @@ val RedditPost.links: List<Service>?
 
 class ShowTest {
     companion object {
-        private val newDB = createDB("toron-test.db")
-        private val newDB2 = createDB("toron-test-2.db")
 
         @JvmStatic
         fun main(args: Array<String>) {
-
-            val old = dbMap<String, RedditPost>("reddit", newDB)
-            val new = dbMap<String, RedditPost>("reddit", newDB2)
-
-            transaction(newDB2) {
-                old.forEach {
-                    val newSelftext = it.value.links?.joinToString(",") {
-                        it.url
-                            .removePrefix("http://")
-                            .removePrefix("https://")
-                    }
-                    new[it.key] = it.value.copy(selftext = newSelftext)
-                }
-            }
-
-
 //            val result = list.asSequence()
 //                .map { it.value }
 //                .filter { it.selftext != null }

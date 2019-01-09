@@ -5,7 +5,6 @@ import com.chbachman.toron.api.anilist.AniListApi
 import com.chbachman.toron.api.reddit.RedditCache
 import com.chbachman.toron.api.reddit.RedditPost
 import com.chbachman.toron.serial.dbMap
-import com.chbachman.toron.serial.select
 import com.chbachman.toron.util.deleteInside
 import com.chbachman.toron.util.isClosing
 import com.chbachman.toron.util.isOpening
@@ -36,7 +35,7 @@ data class GroupedData(
 fun main(args: Array<String>) = runBlocking<Unit> {
     val logger = KotlinLogging.logger {}
 
-    logger.debug { "Running on PID: ${ProcessHandle.current().pid()}" }
+    logger.info { "Running on PID: ${ProcessHandle.current().pid()}" }
 
     RedditCache.start()
 
@@ -53,6 +52,8 @@ fun main(args: Array<String>) = runBlocking<Unit> {
         .filter { it.episode != null }
         .toList()
 
+    logger.info { "Initial Filtering is Completed." }
+
     val grouped = list
         .asSequence()
         .groupBy { it.showTitle }
@@ -68,12 +69,16 @@ fun main(args: Array<String>) = runBlocking<Unit> {
             post.sumBy { it.score }
         }
 
+    logger.info { "Grouping Completed." }
+
     val searched = grouped
         .map { GroupedData(AniListApi.search(it.first).firstOrNull(), it.second) }
         .groupBy { it.showInfo?.id to it.showInfo?.season }
         .map { GroupedData(it.value.first().showInfo, it.value.flatMap { it.discussion }) }
         .filter { it.showInfo != null }
         .sortedBy { it.showInfo?.title?.english }
+
+    logger.info { "Searching Completed" }
 
     val server = embeddedServer(Netty, port = 8081) {
         install(ContentNegotiation) {
@@ -87,7 +92,7 @@ fun main(args: Array<String>) = runBlocking<Unit> {
         routing {
             route("/toron") {
                 get("/list") {
-                    logger.debug { "Fetching List" }
+                    logger.info { "Fetching List" }
                     val list = searched
                         .sortedByDescending { (_, posts) -> posts.sumBy { it.score } }
                         .take(25)

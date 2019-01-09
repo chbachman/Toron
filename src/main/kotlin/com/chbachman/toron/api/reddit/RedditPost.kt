@@ -2,6 +2,7 @@ package com.chbachman.toron.api.reddit
 
 import com.chbachman.toron.api.anilist.AniList
 import com.chbachman.toron.util.*
+import com.fasterxml.jackson.annotation.JsonIgnore
 import kotlinx.coroutines.CoroutineStart
 import org.mapdb.DataInput2
 import org.mapdb.DataOutput2
@@ -25,6 +26,7 @@ data class RedditPost @JvmOverloads constructor(
     val selftext: String? = null,
     val fetched: LocalDateTime = LocalDateTime.now()
 ) {
+    @delegate:JsonIgnore
     val episode: IntRange? by lazy {
         val str = Regex(".*(?:Episodes?|Ep\\.?)\\s*([\\d-]+).*", RegexOption.IGNORE_CASE)
             .matchEntire(title)
@@ -46,6 +48,7 @@ data class RedditPost @JvmOverloads constructor(
         }
     }
 
+    @delegate:JsonIgnore
     val season: Int? by lazy {
         val str = Regex("(\\S*)\\s+(?:Season)\\s+(\\S*)", RegexOption.IGNORE_CASE)
             .matchEntire(title)
@@ -56,6 +59,7 @@ data class RedditPost @JvmOverloads constructor(
         0
     }
 
+    @delegate:JsonIgnore
     val showTitle: String by lazy {
         title
             .deleteInside(Char::isOpening, Char::isClosing)

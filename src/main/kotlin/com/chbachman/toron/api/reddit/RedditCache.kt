@@ -20,16 +20,15 @@ class RedditCache {
 
             // Run every 10 minutes.
             fixedRateTimer(name = "Update Reddit", period = 10 * 60 * 1000) {
-                logger.debug { "Starting Reddit update." }
+                logger.info { "Starting Reddit update." }
 
                 runBlocking {
                     addNewFast(map)
                     updateFast(map)
                     cleanup(map)
-                    mainDB.getStore().compact()
                 }
 
-                logger.debug { "Finished Reddit update." }
+                logger.info { "Finished Reddit update." }
             }
         }
 

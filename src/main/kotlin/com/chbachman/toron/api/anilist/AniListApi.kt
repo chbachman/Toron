@@ -11,6 +11,7 @@ import org.mapdb.DataOutput2
 import org.mapdb.Serializer
 
 data class AniListSearch(
+    val search: String,
     val media: List<Int>
 ) {
     companion object: Serializer<AniListSearch> {
@@ -19,7 +20,7 @@ data class AniListSearch(
         }
 
         override fun deserialize(input: DataInput2, available: Int): AniListSearch {
-            return AniListSearch(input.readList(DataInput2::readInt))
+            return AniListSearch("", input.readList(DataInput2::readInt))
         }
     }
 }
@@ -75,7 +76,7 @@ class AniListApi {
                 // Store the IDs
                 val search = result.media.map { it.id }
 
-                searchCache[query] = AniListSearch(search)
+                searchCache[query] = AniListSearch(query, search)
                 result.media
             } else {
                 cached.media.map { anilist[it]!! }
