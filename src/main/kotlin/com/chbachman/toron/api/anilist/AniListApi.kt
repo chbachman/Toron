@@ -1,20 +1,32 @@
 package com.chbachman.toron.api.anilist
 
 import com.beust.klaxon.Json
-import com.chbachman.toron.serial.dbMap
-import com.chbachman.toron.serial.transaction
+import com.chbachman.toron.Codable
+import com.chbachman.toron.serial.repo
 import com.chbachman.toron.util.*
 import kotlinx.coroutines.delay
 import mu.KotlinLogging
+import okio.Buffer
+import org.dizitart.kno2.filters.eq
+import org.dizitart.no2.IndexType
+import org.dizitart.no2.objects.Index
+import org.dizitart.no2.objects.Indices
 import org.mapdb.DataInput2
 import org.mapdb.DataOutput2
 import org.mapdb.Serializer
 
+@Indices(Index(value = "search", type = IndexType.Fulltext))
 data class AniListSearch(
     val search: String,
     val media: List<Int>
 ) {
-    companion object: Serializer<AniListSearch> {
+    companion object: Serializer<AniListSearch>, Codable<AniListSearch> {
+        override fun write(input: AniListSearch, buffer: Buffer): Buffer =
+            buffer.writeList(Buffer::writeInt, input.media)
+
+        override fun read(buffer: Buffer): AniListSearch =
+            AniListSearch("", buffer.readList(Buffer::readInt))
+
         override fun serialize(out: DataOutput2, value: AniListSearch) {
             out.writeList(DataOutput2::writeInt, value.media)
         }
@@ -53,14 +65,14 @@ class AniListApi {
         private val logger = KotlinLogging.logger {}
 
         private val graphQLQuery = GraphQLQuery(
-            loadFile("series_search.gql"),
+            loadResource("series_search.gql"),
             "https://graphql.anilist.co"
         )
 
-        private val searchCache = dbMap<String, AniListSearch>("anilist-cache")
-        private val anilist = dbMap<Int, AniList>("anilist")
+        suspend fun search(query: String): List<AniList> = transaction { jedis ->
+            val searchCache = jedis.mapOf<String, AniListSearch>("alsearch")
+            val shows = jedis.mapOf<Int, AniList>("show")
 
-        suspend fun search(query: String): List<AniList> = transaction {
             val cached = searchCache[query]
 
             if (cached == null) {
@@ -71,24 +83,26 @@ class AniListApi {
                 val result = response.parseJSON<GraphQLData>()!!.data.page
 
                 // Add to the stored list.
-                result.media.forEach { anilist[it.id] = it }
+                result.media.forEach { shows[it.id] = it }
 
                 // Store the IDs
                 val search = result.media.map { it.id }
 
                 searchCache[query] = AniListSearch(query, search)
-                result.media
+                return result.media
             } else {
-                cached.media.map { anilist[it]!! }
+                return shows[cached.media]
             }
         }
 
         fun byId(id: Int): AniList? {
-            return anilist[id]
+            return null
+//            return anilist.find(AniList::id eq id).firstOrNull()
         }
 
         fun byMALId(id: Int): AniList? {
-            return anilist.values.filterNotNull().find { it.idMal == id }
+            return null
+//            return anilist.find(AniList::idMal eq id).firstOrNull()
         }
     }
 }

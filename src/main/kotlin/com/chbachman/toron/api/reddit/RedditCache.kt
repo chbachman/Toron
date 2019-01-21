@@ -1,13 +1,13 @@
 package com.chbachman.toron.api.reddit
 
 import com.chbachman.toron.serial.*
-import com.chbachman.toron.util.monthsAgo
-import com.chbachman.toron.util.toUTC
-import com.chbachman.toron.util.toUTCDate
+import com.chbachman.toron.util.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
-import org.mapdb.HTreeMap
+import org.dizitart.kno2.filters.eq
+import org.dizitart.kno2.filters.lte
+import org.dizitart.no2.objects.ObjectRepository
 import java.time.LocalDateTime
 import kotlin.concurrent.fixedRateTimer
 
@@ -16,41 +16,45 @@ class RedditCache {
         private val logger = KotlinLogging.logger {}
 
         suspend fun start() {
-            val map = dbMap<String, RedditPost>("reddit")
+            val repo = repo<RedditPost>()
 
             // Run every 10 minutes.
             fixedRateTimer(name = "Update Reddit", period = 10 * 60 * 1000) {
                 logger.info { "Starting Reddit update." }
 
                 runBlocking {
-                    addNewFast(map)
-                    updateFast(map)
-                    cleanup(map)
+                    addNewFast(repo)
+                    updateFast(repo)
+                    cleanup(repo)
                 }
 
                 logger.info { "Finished Reddit update." }
             }
         }
 
-        private fun cleanup(set: HTreeMap<String, RedditPost>) = transaction {
-            fun archived() = set.selectValues { it.created.monthsAgo > 7 }
+        private fun cleanup(repo: ObjectRepository<RedditPost>) {
+            logger.debug { "Started with ${repo.size()}." }
 
-            logger.debug { "Started with ${set.size}." }
+            repo.any(
+                RedditPost::numComments lte 2,
+                RedditPost::score lte 1,
+                RedditPost::isSelf eq false
+            ).filter {
+                it.created.monthsAgo > 7
+            }.forEach {
+                repo.remove(it)
+            }
 
-            archived().selectNot { it.numComments > 2 }.delete()
-            archived().selectNot { it.score > 1 }.delete()
-            archived().selectNot { it.isSelf }.delete()
-
-            logger.debug { "Ended with ${set.size} elements." }
+            logger.debug { "Ended with ${repo.size()} elements." }
         }
 
         // This pulls from PushShift.
         // This guarantees that we will never miss any posts after the most recent.
         private suspend fun addNew(
-            set: HTreeMap<String, RedditPost>,
-            start: LocalDateTime = set.values.filterNotNull().map { it.created }.max()!!,
+            repo: ObjectRepository<RedditPost>,
+            start: LocalDateTime,
             end: LocalDateTime = LocalDateTime.now()
-        ) = transaction {
+        ) {
             var after = start.toUTC()
 
             while (true) {
@@ -58,7 +62,7 @@ class RedditCache {
 
                 val fetched = PushShiftApi.getData(after) ?: break
 
-                set.putAll(fetched.map { it.id to it })
+                repo.insert(fetched)
 
                 val max = fetched.maxBy { it.createdUtc }!!
 
@@ -74,15 +78,15 @@ class RedditCache {
 
         // Pulls from Reddit.
         // Since this one starts at the latest and goes backwards it can miss posts.
-        private suspend fun addNewFast(set: HTreeMap<String, RedditPost>) = transaction {
+        private suspend fun addNewFast(repo: ObjectRepository<RedditPost>) {
             var result = RedditApi.getNew() ?: return
             var seenCount = 0
             var oldestDate = LocalDateTime.now()
-            val newestDate = set.map { it.value.created }.max()!!
+            val newestDate = repo.find().map { it.created }.max()!!
 
             while (true) {
                 val seen = result.data.all {
-                    set.containsKey(it.id)
+                    repo.find(RedditPost::id eq it.id).size() != 0
                 }
 
                 logger.debug { "Amount Seen Already: $seenCount, Seen this one: $seen" }
@@ -97,7 +101,7 @@ class RedditCache {
                     }
                 }
 
-                set.putAll(result.data.map { it.id to it })
+                repo.upsert(result.data)
                 delay(500)
                 result = result.next() ?: break
             }
@@ -105,33 +109,27 @@ class RedditCache {
             logger.debug { newestDate }
             if (oldestDate > newestDate) {
                 logger.debug { "Couldn't get back to where we were before." }
-                addNew(set, newestDate, oldestDate)
+                addNew(repo, newestDate, oldestDate)
             }
         }
 
-        private suspend fun updateFast(set: HTreeMap<String, RedditPost>) = transaction {
-            var count = set.filter { it.value.outdated }.count()
-            var i = 0
-            set.select { it.second.outdated }.replaceGroup(100) { list ->
-                val new = RedditApi.update(list.map { it.first }) ?: return@replaceGroup list
+        private suspend fun updateFast(set: ObjectRepository<RedditPost>) {
+            val outdated = set.find().filter { it.outdated }.toMutableSet()
+            var count = outdated.count()
+
+            outdated.forEachGroup(100) { list ->
+                val new = RedditApi.update(list.map { it.id }) ?: return@forEachGroup
 
                 logger.debug { "Have $count posts left." }
                 count -= list.size
 
-                i++
-                if (i > 10) {
-                    logger.debug { "Adding changes so far." }
-                    i = 0
-                    mainDB.commit()
-                }
-
                 delay(500)
-                list.zip(new.data).map { (post, update) ->
-                    post.first to post.second.update(update)
-                }
+                val result = list
+                    .zip(new.data)
+                    .map { (post, update) -> post.update(update) }
+
+                set.update(result)
             }
         }
-
     }
-
 }

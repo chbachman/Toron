@@ -82,6 +82,32 @@ class InPlaceGroupDriver<T>(
     }
 }
 
+inline fun <T> Collection<T>.forEachGroup(n: Int, closure: (List<T>) -> Unit) =
+    iterator().forEachGroup(n, closure)
+
+fun <T> Iterator<T>.grab(n: Int): List<T> {
+    val list = mutableListOf<T>()
+    var remaining = n
+
+    while (hasNext() && remaining > 0) {
+        val element = next()
+        list.add(element)
+        remaining--
+    }
+
+    return list
+}
+
+inline fun <T> Iterator<T>.forEachGroup(n: Int, closure: (List<T>) -> Unit) {
+    while (hasNext()) {
+        val group = grab(n)
+
+        if (!group.isEmpty()) {
+            closure(group)
+        }
+    }
+}
+
 fun <T> InPlaceGroupDriver<T>.select(closure: (T) -> Boolean): InPlaceGroupDriver<T> {
     filters.add(closure)
     return this

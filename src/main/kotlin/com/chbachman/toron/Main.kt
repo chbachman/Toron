@@ -4,10 +4,8 @@ import com.chbachman.toron.api.anilist.AniList
 import com.chbachman.toron.api.anilist.AniListApi
 import com.chbachman.toron.api.reddit.RedditCache
 import com.chbachman.toron.api.reddit.RedditPost
-import com.chbachman.toron.serial.dbMap
-import com.chbachman.toron.util.deleteInside
-import com.chbachman.toron.util.isClosing
-import com.chbachman.toron.util.isOpening
+import com.chbachman.toron.serial.repo
+import com.chbachman.toron.util.*
 import com.fasterxml.jackson.databind.SerializationFeature
 import io.ktor.application.call
 import io.ktor.application.install
@@ -23,6 +21,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
+import org.dizitart.kno2.filters.*
 import java.io.File
 
 val homeDir = File(System.getProperty("user.home"), "toron")
@@ -35,24 +34,35 @@ data class GroupedData(
 fun main(args: Array<String>) = runBlocking<Unit> {
     val logger = KotlinLogging.logger {}
 
-    logger.info { "Running on PID: ${ProcessHandle.current().pid()}" }
+    // RedditCache.start()
 
-    RedditCache.start()
+    logger.info { "Loading initial list." }
 
-    val originalList = dbMap<String, RedditPost>("reddit")
+    val originalList = repo<RedditPost>()
 
-    val list = originalList
-        .asSequence()
-        .map { it.value }
+    logger.info { "Starting up. Doing initial filtering." }
+
+    val list2 = originalList.find()
         .filter { it.numComments > 2 }
         .filter { it.score > 1 }
         .filter { it.isSelf }
-        .filterNot { it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank() }
-        .filter { it.title.contains(Regex("\\d")) }
         .filter { it.episode != null }
+        .filter { it.title.contains("\\d".toRegex()) }
+        .filterNot { it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank() }
         .toList()
 
-    logger.info { "Initial Filtering is Completed." }
+    val list = originalList.all(
+        RedditPost::numComments gt 2,
+        RedditPost::score gt 1
+//        RedditPost::isSelf eq true,
+//        !(RedditPost::episode eq null),
+//        RedditPost::title regex "\\d"
+    ).filterNot {
+        it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank()
+    }.toList()
+
+    logger.info { "Initial Filtering is Completed. With ${list.size}" }
+    logger.info { "Initial Changed Filtering is Completed. With ${list2.size}" }
 
     val grouped = list
         .asSequence()

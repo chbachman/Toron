@@ -5,12 +5,11 @@ import com.chbachman.toron.api.anilist.AniListApi
 import com.chbachman.toron.api.anilist.AniListPage
 import com.chbachman.toron.api.anilist.AniListSearch
 import com.chbachman.toron.serial.*
-import com.chbachman.toron.util.daysAgo
-import com.chbachman.toron.util.hoursAgo
-import com.chbachman.toron.util.minus
-import com.chbachman.toron.util.toUTCDate
+import com.chbachman.toron.util.*
+import org.dizitart.kno2.filters.*
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
+import kotlin.system.measureTimeMillis
 
 class Service(
     val url: String
@@ -72,6 +71,34 @@ class ShowTest {
 
         @JvmStatic
         fun main(args: Array<String>) {
+            val set = repo<RedditPost>()
+
+            val maybeTime = measureTimeMillis {
+                val maybe = set.remove(
+                    ((RedditPost::numComments lte 2) or
+                        (RedditPost::score lte 1) or
+                        (RedditPost::isSelf eq false)) and
+                        (RedditPost::createdUtc custom { it.toUTCDate().monthsAgo > 7 })
+                )
+            }
+
+            println(set.size())
+            println("New way took $maybeTime millis")
+
+            val newTime = measureTimeMillis {
+                val yes = set.find()
+                    .asSequence()
+                    .filterNot { it.numComments > 2 && it.isSelf && it.score > 1 }
+                    .filter { it.created.monthsAgo > 7 }
+                    .forEach { set.remove(it) }
+            }
+            println(set.size())
+            println("Old way took $newTime millis")
+
+
+
+
+
 //            val result = list.asSequence()
 //                .map { it.value }
 //                .filter { it.selftext != null }

@@ -1,9 +1,13 @@
 package com.chbachman.toron.api.reddit
 
+import com.chbachman.toron.Codable
+import com.chbachman.toron.Test
 import com.chbachman.toron.api.anilist.AniList
 import com.chbachman.toron.util.*
 import com.fasterxml.jackson.annotation.JsonIgnore
 import kotlinx.coroutines.CoroutineStart
+import okio.Buffer
+import org.dizitart.no2.objects.Id
 import org.mapdb.DataInput2
 import org.mapdb.DataOutput2
 import org.mapdb.Serializer
@@ -15,7 +19,7 @@ data class RedditPost @JvmOverloads constructor(
     val author: String,
     @FuzzyLong
     val createdUtc: Long,
-    val id: String,
+    @Id val id: String,
     val isSelf: Boolean,
     val numComments: Int,
     val permalink: String,
@@ -85,7 +89,7 @@ data class RedditPost @JvmOverloads constructor(
         )
     }
 
-    companion object: Serializer<RedditPost> {
+    companion object: Serializer<RedditPost>, Codable<RedditPost> {
         override fun serialize(out: DataOutput2, value: RedditPost) {
             out.writeUTF(value.author)
             out.writeLong(value.createdUtc)
@@ -125,6 +129,67 @@ data class RedditPost @JvmOverloads constructor(
             val selfText =
                 if (selfTextExists) {
                     source.readUTF()
+                } else {
+                    null
+                }
+
+            return RedditPost(
+                author = author,
+                createdUtc = createdUTC,
+                id = id,
+                isSelf = isSelf,
+                numComments = numComments,
+                permalink = permalink,
+                score = score,
+                title = title,
+                url = url,
+                over18 = over18,
+                selftext = selfText,
+                fetched = fetched
+            )
+        }
+
+        override fun write(input: RedditPost, buffer: Buffer): Buffer {
+            buffer.writeString(input.author)
+            buffer.writeLong(input.createdUtc)
+            buffer.writeString(input.id)
+            buffer.writeInt(input.numComments)
+            buffer.writeString(input.permalink)
+            buffer.writeInt(input.score)
+            buffer.writeString(input.title)
+            buffer.writeString(input.url)
+            buffer.writeBoolean(input.isSelf)
+            buffer.writeBoolean(input.over18)
+            buffer.writeBoolean(input.selftext != null)
+            buffer.writeLong(input.fetched.toEpochSecond(ZoneOffset.UTC))
+            buffer.writeInt(input.fetched.nano)
+
+            if (input.selftext != null) {
+                buffer.writeString(input.selftext)
+            }
+
+            return buffer
+        }
+
+        override fun read(buffer: Buffer): RedditPost {
+            val author = buffer.readString()
+            val createdUTC = buffer.readLong()
+            val id = buffer.readString()
+            val numComments = buffer.readInt()
+            val permalink = buffer.readString()
+            val score = buffer.readInt()
+            val title = buffer.readString()
+            val url = buffer.readString()
+            val isSelf = buffer.readBoolean()
+            val over18 = buffer.readBoolean()
+            val selfTextExists = buffer.readBoolean()
+            val utcSecond = buffer.readLong()
+            val nano = buffer.readInt()
+            val fetched = LocalDateTime.ofEpochSecond(utcSecond, nano, ZoneOffset.UTC)
+
+            val selfText =
+                if (selfTextExists) {
+                    buffer.readString()
                 } else {
                     null
                 }

@@ -67,6 +67,6 @@ inline fun <T> retry(times: Int, closure: () -> T?): T? {
     return null
 }
 
-fun loadFile(name: String): URL {
+fun loadResource(name: String): URL {
     return Thread.currentThread().contextClassLoader.getResource(name)
 }

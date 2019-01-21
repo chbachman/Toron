@@ -46,6 +46,7 @@ dependencies {
 
     implementation "ch.qos.logback:logback-classic:1.2.3"
 
+    implementation 'redis.clients:jedis:3.0.0'
     implementation 'com.squareup.okio:okio:2.1.0'
     implementation 'com.beust:klaxon:4.0.6'
     implementation 'org.mapdb:mapdb:3.0.7'
