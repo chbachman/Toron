@@ -4,7 +4,6 @@ import com.chbachman.toron.api.anilist.AniList
 import com.chbachman.toron.api.anilist.AniListApi
 import com.chbachman.toron.api.reddit.RedditCache
 import com.chbachman.toron.api.reddit.RedditPost
-import com.chbachman.toron.serial.repo
 import com.chbachman.toron.util.*
 import com.fasterxml.jackson.databind.SerializationFeature
 import io.ktor.application.call
@@ -21,7 +20,6 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
-import org.dizitart.kno2.filters.*
 import java.io.File
 
 val homeDir = File(System.getProperty("user.home"), "toron")
@@ -36,93 +34,87 @@ fun main(args: Array<String>) = runBlocking<Unit> {
 
     // RedditCache.start()
 
-    logger.info { "Loading initial list." }
+    transaction {
+        logger.info { "Loading initial list." }
+        val originalList = redditPosts()
 
-    val originalList = repo<RedditPost>()
+        logger.info { "Starting up. Doing initial filtering." }
 
-    logger.info { "Starting up. Doing initial filtering." }
+        val list = originalList.mapNotNull { originalList[it] }
+            .filter { it.numComments > 2 }
+            .filter { it.score > 1 }
+            .filter { it.isSelf }
+            .filter { it.episode != null }
+            .filter { it.title.contains("\\d".toRegex()) }
+            .filterNot { it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank() }
+            .toList()
 
-    val list2 = originalList.find()
-        .filter { it.numComments > 2 }
-        .filter { it.score > 1 }
-        .filter { it.isSelf }
-        .filter { it.episode != null }
-        .filter { it.title.contains("\\d".toRegex()) }
-        .filterNot { it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank() }
-        .toList()
+        logger.info { "Initial Filtering completed with a size of ${list.size}" }
 
-    val list = originalList.all(
-        RedditPost::numComments gt 2,
-        RedditPost::score gt 1
-//        RedditPost::isSelf eq true,
-//        !(RedditPost::episode eq null),
-//        RedditPost::title regex "\\d"
-    ).filterNot {
-        it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank()
-    }.toList()
-
-    logger.info { "Initial Filtering is Completed. With ${list.size}" }
-    logger.info { "Initial Changed Filtering is Completed. With ${list2.size}" }
-
-    val grouped = list
-        .asSequence()
-        .groupBy { it.showTitle }
-        .toList()
-        .map { it.first to it.second.sortedBy { it.episode?.first } }
-        .map { (title, episodes) ->
-            title to episodes
-                .groupBy { it.episode }
-                .mapNotNull { (_, episodes) ->
-                    episodes.maxBy { it.score }
-                }
-        }.sortedByDescending { (_, post) ->
-            post.sumBy { it.score }
-        }
-
-    logger.info { "Grouping Completed." }
-
-    val searched = grouped
-        .map { GroupedData(AniListApi.search(it.first).firstOrNull(), it.second) }
-        .groupBy { it.showInfo?.id to it.showInfo?.season }
-        .map { GroupedData(it.value.first().showInfo, it.value.flatMap { it.discussion }) }
-        .filter { it.showInfo != null }
-        .sortedBy { it.showInfo?.title?.english }
-
-    logger.info { "Searching Completed" }
-
-    val server = embeddedServer(Netty, port = 8081) {
-        install(ContentNegotiation) {
-            jackson {
-                enable(SerializationFeature.INDENT_OUTPUT)
+        val grouped = list
+            .asSequence()
+            .groupBy { it.showTitle }
+            .toList()
+            .map { it.first to it.second.sortedBy { it.episode?.first } }
+            .map { (title, episodes) ->
+                title to episodes
+                    .groupBy { it.episode }
+                    .mapNotNull { (_, episodes) ->
+                        episodes.maxBy { it.score }
+                    }
+            }.sortedByDescending { (_, post) ->
+                post.sumBy { it.score }
             }
-        }
-        install(CORS) {
-            anyHost()
-        }
-        routing {
-            route("/toron") {
-                get("/list") {
-                    logger.info { "Fetching List" }
-                    val list = searched
-                        .sortedByDescending { (_, posts) -> posts.sumBy { it.score } }
-                        .take(25)
-                        .map { it.showInfo }
 
-                    call.respond(list)
+        logger.info { "Grouping Completed with a size of ${grouped.size}" }
+
+        val searched = grouped
+            .map { GroupedData(AniListApi.search(it.first).firstOrNull(), it.second) }
+            .groupBy { it.showInfo?.id to it.showInfo?.season }
+            .map { GroupedData(it.value.first().showInfo, it.value.flatMap { it.discussion }) }
+            .filter { it.showInfo != null }
+            .sortedBy { it.showInfo?.title?.english }
+
+        logger.info { "Searching Completed with a size of ${searched.size}" }
+
+        val server = embeddedServer(Netty, port = 8081) {
+            install(ContentNegotiation) {
+                jackson {
+                    enable(SerializationFeature.INDENT_OUTPUT)
                 }
-                get("/show/{id}") {
-                    val id = call.parameters["id"]?.toInt()
-                    val result = searched.find { show -> show.showInfo?.id == id }
+            }
+            install(CORS) {
+                anyHost()
+            }
+            routing {
+                route("/toron") {
+                    get("/list") {
+                        logger.info { "Fetching List" }
+                        val list = searched
+                            .sortedByDescending { (_, posts) -> posts.sumBy { it.score } }
+                            .take(25)
+                            .map { it.showInfo }
 
-                    if (result != null) {
-                        call.respond(result)
-                    } else {
-                        call.respond(HttpStatusCode.NotFound)
+                        println(list.size)
+
+                        call.respond(list)
+                    }
+                    get("/show/{id}") {
+                        val id = call.parameters["id"]?.toInt()
+                        val result = searched.find { show -> show.showInfo?.id == id }
+
+                        if (result != null) {
+                            call.respond(result)
+                        } else {
+                            call.respond(HttpStatusCode.NotFound)
+                        }
                     }
                 }
-            }
 
+            }
         }
+        server.start(wait = true)
     }
-    server.start(wait = true)
+
+
 }

@@ -1,55 +1,25 @@
 package com.chbachman.toron.api.anilist
 
 import com.beust.klaxon.Json
-import com.chbachman.toron.Codable
-import com.chbachman.toron.serial.repo
 import com.chbachman.toron.util.*
 import kotlinx.coroutines.delay
 import mu.KotlinLogging
 import okio.Buffer
-import org.dizitart.kno2.filters.eq
-import org.dizitart.no2.IndexType
-import org.dizitart.no2.objects.Index
-import org.dizitart.no2.objects.Indices
-import org.mapdb.DataInput2
-import org.mapdb.DataOutput2
-import org.mapdb.Serializer
 
-@Indices(Index(value = "search", type = IndexType.Fulltext))
 data class AniListSearch(
     val search: String,
     val media: List<Int>
 ) {
-    companion object: Serializer<AniListSearch>, Codable<AniListSearch> {
+    companion object: Codable<AniListSearch> {
         override fun write(input: AniListSearch, buffer: Buffer): Buffer =
             buffer.writeList(Buffer::writeInt, input.media)
 
         override fun read(buffer: Buffer): AniListSearch =
             AniListSearch("", buffer.readList(Buffer::readInt))
-
-        override fun serialize(out: DataOutput2, value: AniListSearch) {
-            out.writeList(DataOutput2::writeInt, value.media)
-        }
-
-        override fun deserialize(input: DataInput2, available: Int): AniListSearch {
-            return AniListSearch("", input.readList(DataInput2::readInt))
-        }
     }
 }
 
-data class AniListPage(
-    val media: List<AniList>
-) {
-    companion object: Serializer<AniListPage> {
-        override fun serialize(out: DataOutput2, value: AniListPage) {
-            out.writeList(AniList.writer(), value.media)
-        }
-
-        override fun deserialize(input: DataInput2, available: Int): AniListPage {
-            return AniListPage(input.readList(AniList.reader()))
-        }
-    }
-}
+data class AniListPage(val media: List<AniList>)
 
 private data class GraphQLDataPage(
     @Json("Page")
@@ -69,9 +39,9 @@ class AniListApi {
             "https://graphql.anilist.co"
         )
 
-        suspend fun search(query: String): List<AniList> = transaction { jedis ->
-            val searchCache = jedis.mapOf<String, AniListSearch>("alsearch")
-            val shows = jedis.mapOf<Int, AniList>("show")
+        suspend fun search(query: String): List<AniList> = transaction {
+            val searchCache = mapOf<String, AniListSearch>("alsearch")
+            val shows = mapOf<Int, AniList>("show")
 
             val cached = searchCache[query]
 
