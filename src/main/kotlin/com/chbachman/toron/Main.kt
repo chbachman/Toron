@@ -23,11 +23,14 @@ import io.ktor.server.netty.Netty
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
 import java.io.File
+import java.lang.management.ManagementFactory
 
 val homeDir = File(System.getProperty("user.home"), "toron")
 
 fun main(args: Array<String>) = runBlocking<Unit> {
     val logger = KotlinLogging.logger {}
+
+    logger.info { ManagementFactory.getRuntimeMXBean().name }
 
     RedditCache.start()
 

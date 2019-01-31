@@ -25,17 +25,17 @@ suspend inline fun <T> linker(closure: (Linker) -> T) = transaction {
 }
 
 class Linker constructor(
-    private val data: Map<Int, List<String>>,
+    private val data: Map<Int, List<Long>>,
     jedis: Jedis
 ): Iterable<Show> {
     private val valueSet = jedis.redditPosts()
     private val keySet = jedis.anilistShows()
 
     operator fun get(id: Int) =
-        data[id]?.let { valueSet[it] }
+        data[id]?.let { posts(it) }
 
     operator fun get(id: Collection<Int>) =
-        id.mapNotNull { data[it] }.map { valueSet[it] }
+        id.mapNotNull { data[it] }.map { posts(it) }
 
     override fun iterator() = object: Iterator<Show> {
         val iterator = data.iterator()
@@ -43,9 +43,12 @@ class Linker constructor(
 
         override fun next(): Show {
             val data = iterator.next()
-            return Show(keySet[data.key]!!, valueSet[data.value])
+            return Show(keySet[data.key]!!, posts(data.value))
         }
     }
+
+    private fun posts(posts: List<Long>) =
+        valueSet[posts.map { it.toString(36) }]
 
     companion object {
         private val logger = KotlinLogging.logger {  }
@@ -58,7 +61,7 @@ class Linker constructor(
         private fun refreshAsync() =
             GlobalScope.async { mutex.withLock { generateMap() } }
 
-        private suspend fun generateMap(): Map<Int, List<String>> = transaction {
+        private suspend fun generateMap(): Map<Int, List<Long>> = transaction {
             logger.info { "Loading initial list." }
             val posts = redditPosts()
             logger.info { "Starting up. Doing Grouping." }
@@ -75,7 +78,7 @@ class Linker constructor(
                 .mapNotNull { entry ->
                     val showId = entry.key
                     if (showId != null) {
-                        showId.id to entry.value.map { it.id }
+                        showId.id to entry.value.map { it.id }.map { it.toLong(36) }
                     } else {
                         null
                     }
