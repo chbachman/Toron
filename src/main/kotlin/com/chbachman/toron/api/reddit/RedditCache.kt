@@ -1,5 +1,8 @@
 package com.chbachman.toron.api.reddit
 
+import com.chbachman.toron.jedis.pipeline
+import com.chbachman.toron.jedis.transaction
+import com.chbachman.toron.link.Linker
 import com.chbachman.toron.util.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -11,15 +14,16 @@ class RedditCache {
     companion object {
         private val logger = KotlinLogging.logger {}
 
-        suspend fun start() {
+        fun start() {
             // Run every 10 minutes.
             fixedRateTimer(name = "Update Reddit", period = 10 * 60 * 1000) {
                 logger.info { "Starting Reddit update." }
 
                 runBlocking {
-                    // addNewFast()
+                    addNewFast()
                     updateFast()
                     cleanup()
+                    Linker.invalidate()
                 }
 
                 logger.info { "Finished Reddit update." }
@@ -82,10 +86,10 @@ class RedditCache {
         private suspend fun addNewFast() = transaction {
             val posts = redditPosts()
 
-            var result = RedditApi.getNew() ?: return
+            var result = RedditApi.getNew() ?: return@transaction
             var seenCount = 0
             var oldestDate = LocalDateTime.now()
-            val newestDate = posts.mapNotNull { posts[it]?.created }.max()!!
+            val newestDate = posts.values.map { it.created }.max()!!
 
             while (true) {
                 val seen = posts.anyExists(result.data.map { it.id })
@@ -103,6 +107,7 @@ class RedditCache {
                 }
 
                 posts.set(result.data.map { it.id to it })
+                findLinked(result.data)
                 delay(500)
                 result = result.next() ?: break
             }
@@ -114,24 +119,54 @@ class RedditCache {
             }
         }
 
+        private suspend fun findLinked(posts: List<RedditPost>) = transaction {
+            val redditPosts = redditPosts()
+            val ids = posts
+                .asSequence()
+                .mapNotNull { it.links }
+                .flatten()
+                .filter { it.type == ServiceType.Reddit }
+                .mapNotNull { it.id }
+                .filter { !redditPosts.exists(it) }
+                .toList()
+
+            val fetched = RedditApi.update(ids)?.data ?: return
+
+            val final = fetched.filter { it.subreddit == "anime" }.map { it.id to it }
+
+            if (final.isNotEmpty()) {
+                logger.debug { "Adding ${final.size} Reddit Posts from links" }
+
+                redditPosts.set(final)
+            }
+        }
+
         private suspend fun updateFast() = transaction {
-            redditPosts().scanValuesGroup { posts ->
+            logger.info { "Updating Reddit Posts." }
+            var count = 0
+            redditPosts().scanValuesGroup(1000) { posts ->
                 val outdated = posts.filter { it.outdated }
 
-                val new = RedditApi.update(outdated.map { it.id })
+                if (outdated.isNotEmpty()) {
+                    count += outdated.size
+                    logger.debug { "Updated $count posts so far." }
 
-                if (new != null) {
-                    delay(500)
-                    val result = outdated
-                        .zip(new.data)
-                        .map { (original, update) ->
-                            original.update(update)
-                        }
-                        .map { it.id to it }
+                    val new = RedditApi.update(outdated.map { it.id })
 
-                    set(result)
+                    if (new != null) {
+                        delay(500)
+                        val result = outdated
+                            .zip(new.data)
+                            .map { (original, update) ->
+                                original.update(update)
+                            }
+                            .map { it.id to it }
+
+                        set(result)
+                    }
                 }
             }
+            logger.info { "Reddit Posts Updated." }
         }
     }
 }

@@ -8,7 +8,7 @@ import java.net.URL
 
 val defaultClient = HttpClient()
 
-suspend inline fun <reified T> GraphQLQuery.get(variables: Map<String, String>): T =
+suspend inline fun <reified T> GraphQLQuery.get(variables: Map<String, Any>): T =
     defaultClient.post(url) {
         body = content(variables)
     }
@@ -22,9 +22,9 @@ data class GraphQLQuery(
         url
     )
 
-    fun content(variables: Map<String, String>): TextContent {
+    fun content(variables: Map<String, Any>): TextContent {
         val variablesStr = variables
-            .map { it.key to it.value.replace("\"", "\\\"") }
+            .map { it.key to it.value.toString().replace("\"", "\\\"") }
             .joinToString(",") { (name, value) ->
                 """ "$name": "$value" """
             }

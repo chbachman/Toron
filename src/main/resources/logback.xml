@@ -8,6 +8,7 @@
 
     <logger name="org.dizitart.no2" level="info" />
     <logger name="uk.co.jemos.podam.api" level="info" />
+    <logger name="io.netty" level="info" />
     <logger name="com.chbachman.toron" level="debug" />
 
     <root level="debug">

@@ -1,55 +1,37 @@
 package com.chbachman.toron
 
-import com.chbachman.toron.api.anilist.AniList
-import com.chbachman.toron.api.anilist.AniListSearch
 import com.chbachman.toron.api.reddit.RedditPost
+import com.chbachman.toron.jedis.closeDB
+import com.chbachman.toron.jedis.transaction
 import com.chbachman.toron.util.*
+import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
-import okio.Buffer
-import kotlin.system.measureTimeMillis
 
-data class Test(
-    var x: Int,
-    var y: Boolean
-) {
-    companion object: Codable<Test> {
-        override fun write(input: Test, buffer: Buffer): Buffer {
-            buffer.writeInt(input.x)
-            buffer.writeBoolean(input.y)
-
-            return buffer
-        }
-
-        override fun read(buffer: Buffer): Test {
-            val x = buffer.readInt()
-            val y = buffer.readBoolean()
-
-            return Test(
-                x = x,
-                y = y
-            )
-        }
+class Test {
+    companion object {
+        private val logger = KotlinLogging.logger {}
 
         @JvmStatic
-        fun main(args: Array<String>) {
-            val logger = KotlinLogging.logger {}
-
-            logger.info { "Loading initial list." }
-
-            val coder = RedditPost
-
-            logger.info { "Starting up. Doing initial filtering." }
-
+        fun main(args: Array<String>) = runBlocking<Unit> {
             transaction {
-                val posts = mapOf<Int, AniList>("show")
-
-                posts.forEach { println(it) }
+                val redditPosts = redditPosts()
             }
-
-            logger.info { "Finished adding new Redis." }
-
             closeDB()
+        }
+
+        fun testPost(post: RedditPost) {
+            if (!(post.numComments > 2))
+                logger.debug { "Comments are two low: ${post.numComments} > 2" }
+            if (!(post.score > 1))
+                logger.debug { "Score is two low: ${post.score} > 1" }
+            if (!post.isSelf)
+                logger.debug { "Post is not a self post." }
+            if (post.episode == null)
+                logger.debug { "Post does not have an episode." }
+            if (!post.title.contains("\\d".toRegex()))
+                logger.debug { "Post does not contain a number." }
+            if (post.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank())
+                logger.debug { "Post does not have a selftext." }
         }
     }
 }
-

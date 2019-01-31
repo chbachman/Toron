@@ -1,6 +1,8 @@
 package com.chbachman.toron.api.anilist
 
 import com.beust.klaxon.Json
+import com.chbachman.toron.jedis.mapOf
+import com.chbachman.toron.jedis.transaction
 import com.chbachman.toron.util.*
 import kotlinx.coroutines.delay
 import mu.KotlinLogging
@@ -33,23 +35,24 @@ private data class GraphQLData(
 class AniListApi {
     companion object {
         private val logger = KotlinLogging.logger {}
+        private val blockSet = mutableSetOf<String>()
 
-        private val graphQLQuery = GraphQLQuery(
+        private val searchQuery = GraphQLQuery(
             loadResource("series_search.gql"),
             "https://graphql.anilist.co"
         )
 
         suspend fun search(query: String): List<AniList> = transaction {
             val searchCache = mapOf<String, AniListSearch>("alsearch")
-            val shows = mapOf<Int, AniList>("show")
+            val shows = anilistShows()
 
             val cached = searchCache[query]
 
             if (cached == null) {
-                logger.debug { "Loading `$query`" }
+                logger.debug { "Loading search:`$query` from AniList." }
                 delay(1000)
 
-                val response = graphQLQuery.get<String>(mapOf("query" to query))
+                val response = searchQuery.get<String>(mapOf("query" to query))
                 val result = response.parseJSON<GraphQLData>()!!.data.page
 
                 // Add to the stored list.
@@ -65,14 +68,67 @@ class AniListApi {
             }
         }
 
-        fun byId(id: Int): AniList? {
-            return null
-//            return anilist.find(AniList::id eq id).firstOrNull()
+        private val idQuery = GraphQLQuery(
+            loadResource("series_id.gql"),
+            "https://graphql.anilist.co"
+        )
+
+        suspend fun byID(id: Int): AniList? = transaction {
+            val shows = anilistShows()
+            val blocked = blockSet.contains("al:$id")
+
+            if (blocked) { return@transaction null }
+
+            val cached = shows[id]
+
+            if (cached == null) {
+                logger.debug { "Loading id:`$id` from AniList." }
+                delay(1000)
+
+                val response = idQuery.get<String>(mapOf("query" to id))
+                val result = response.parseJSON<GraphQLData>()!!.data.page.media.singleOrNull()
+
+                if (result == null) {
+                    blockSet.add("al:$id")
+                    null
+                } else {
+                    shows[result.id] = result
+                    result
+                }
+            } else {
+                return cached
+            }
         }
 
-        fun byMALId(id: Int): AniList? {
-            return null
-//            return anilist.find(AniList::idMal eq id).firstOrNull()
+        private val idMalQuery = GraphQLQuery(
+            loadResource("series_idMal.gql"),
+            "https://graphql.anilist.co"
+        )
+        
+        suspend fun byMalID(id: Int): AniList? = transaction {
+            val shows = anilistShows()
+            val blocked = blockSet.contains("mal:$id")
+
+            if (blocked) { return@transaction null }
+
+            val cached = shows.getMAL(id)
+
+            if (cached == null) {
+                logger.debug { "Loading malId:`$id` from AniList." }
+                delay(1000)
+                val response = idMalQuery.get<String>(mapOf("query" to id))
+                val result = response.parseJSON<GraphQLData>()!!.data.page.media.singleOrNull()
+
+                if (result == null) {
+                    blockSet.add("mal:$id")
+                    null
+                } else {
+                    shows[result.id] = result
+                    result
+                }
+            } else {
+                return cached
+            }
         }
     }
 }

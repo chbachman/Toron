@@ -1,0 +1,35 @@
+query($query: Int) {
+  Page {
+    media(id: $query, type: ANIME, isAdult: false) {
+      id
+      idMal
+      title {
+        romaji
+        english
+        native
+      }
+      coverImage {
+        medium
+        large
+        extraLarge
+      }
+      bannerImage
+      format
+      status
+      season
+      synonyms
+      averageScore
+      popularity
+      episodes
+      isLocked
+      siteUrl
+      description
+      stats {
+        scoreDistribution {
+          score
+          amount
+        }
+      }
+    }
+  }
+}

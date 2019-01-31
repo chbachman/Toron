@@ -52,6 +52,14 @@ class RedditApi {
             parseResponse(raw)
         }
 
+        suspend fun update(id: String) = retry(3) {
+            val raw = client.get<String>(infoUrl) {
+                parameter("id", "t3_$id")
+            }
+
+            parseResponse(raw)?.data?.singleOrNull()
+        }
+
         suspend fun getNew(after: RedditSearchResult) = retry(3) {
             val raw = client.get<String>(searchUrl) {
                 parameter("count", after.count)

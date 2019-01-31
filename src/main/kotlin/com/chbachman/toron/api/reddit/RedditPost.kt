@@ -1,9 +1,17 @@
 package com.chbachman.toron.api.reddit
 
+import com.chbachman.toron.api.anilist.AniList
+import com.chbachman.toron.api.anilist.AniListApi
 import com.chbachman.toron.util.*
+import com.fasterxml.jackson.annotation.JsonIgnore
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
+import mu.KotlinLogging
 import okio.Buffer
 import java.time.LocalDateTime
 import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 
 data class RedditPost @JvmOverloads constructor(
     val author: String,
@@ -20,6 +28,8 @@ data class RedditPost @JvmOverloads constructor(
     val selftext: String? = null,
     val fetched: LocalDateTime = LocalDateTime.now()
 ) {
+    private val logger = KotlinLogging.logger {}
+
     val episode: IntRange? by lazy {
         val str = Regex(".*(?:Episodes?|Ep\\.?)\\s*([\\d-]+).*", RegexOption.IGNORE_CASE)
             .matchEntire(title)
@@ -46,8 +56,6 @@ data class RedditPost @JvmOverloads constructor(
             .matchEntire(title)
             ?.groupValues
 
-        println(str)
-
         0
     }
 
@@ -66,6 +74,80 @@ data class RedditPost @JvmOverloads constructor(
             .removeSuffix("–")
             .trim()
     }
+
+    val rewatch: Boolean by lazy {
+        title.contains("[rewatch]", ignoreCase = true)
+    }
+
+    @JsonIgnore
+    val show = GlobalScope.async(start = CoroutineStart.LAZY) {
+        aniListShow() ?: myAnimeListShow() ?: titleShow()
+    }
+
+    val subreddit: String
+        get() {
+            val trimmed = permalink.removePrefix("/r/")
+            return trimmed.removeRange(trimmed.indexOf('/'), trimmed.length)
+        }
+
+    val created: LocalDateTime
+        get() = createdUtc.toUTCDate()
+
+    val outdated: Boolean
+        get() = when (created.daysAgo) {
+            in 0..7 -> fetched.hoursAgo > 1 // One Week
+            in 7..14 -> fetched.daysAgo > 1 // Two Weeks
+            in 14..31 -> fetched.daysAgo > 2 // Three-Four Weeks
+            in 31..31*2 -> fetched.daysAgo > 7 // 2 Months
+            in 31*2..31*3 -> fetched.daysAgo > 14 // 3 Months
+            in 31*3..31*6 -> fetched.daysAgo > 28 // 3-6 Months
+            else -> fetched.minus(created, ChronoUnit.MONTHS) > 6 // Archived Posts
+        }
+
+    private suspend fun aniListShow(): AniList? {
+        return if (!selftext.isNullOrBlank()) {
+            val links = getLinks(selftext)
+
+            links.mapNotNull { service ->
+                val id = service.id?.toIntOrNull()
+                if (id != null && service.type == ServiceType.AniList) {
+                    AniListApi.byID(id)
+                } else {
+                    null
+                }
+            }.maxBy {
+                // The choice here for popularity is a bad one.
+                // I just don't see multiple links happening in a discussion thread.
+                it.popularity
+            }
+        } else {
+            null
+        }
+    }
+
+    private suspend fun myAnimeListShow(): AniList? {
+        return if (!selftext.isNullOrBlank()) {
+            val links = getLinks(selftext)
+
+            links.mapNotNull { service ->
+                val id = service.id?.toIntOrNull()
+                if (id != null && service.type == ServiceType.MyAnimeList) {
+                    AniListApi.byMalID(id)
+                } else {
+                    null
+                }
+            }.maxBy {
+                // The choice here for popularity is a bad one.
+                // I just don't see multiple links happening in a discussion thread.
+                it.popularity
+            }
+        } else {
+            null
+        }
+    }
+
+    private suspend fun titleShow(): AniList? =
+        AniListApi.search(showTitle).firstOrNull()
 
     fun update(post: RedditPost): RedditPost {
         return copy(
