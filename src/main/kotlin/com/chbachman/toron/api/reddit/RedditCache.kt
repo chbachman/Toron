@@ -20,10 +20,14 @@ class RedditCache {
                 logger.info { "Starting Reddit update." }
 
                 runBlocking {
-                    addNewFast()
-                    updateFast()
-                    cleanup()
-                    Linker.invalidate()
+                    try {
+                        addNewFast()
+                        updateFast()
+                        cleanup()
+                        Linker.invalidate()
+                    } catch (err: Exception) {
+                        logger.info { "Unable to update Reddit. Exiting this attempt." }
+                    }
                 }
 
                 logger.info { "Finished Reddit update." }
