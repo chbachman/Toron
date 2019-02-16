@@ -62,9 +62,14 @@ open class JedisMap<K, V>(
         jedis.set(encodeKey(key), encodeValue(value))
 
     open fun set(collection: Collection<Pair<K, V>>): String =
-        jedis.mset(*collection.flatMap {
-            listOf(encodeKey(it.first), encodeValue(it.second))
-        }.toTypedArray())
+        if (!collection.isEmpty()) {
+            jedis.mset(*collection.flatMap {
+                listOf(encodeKey(it.first), encodeValue(it.second))
+            }.toTypedArray())
+        } else {
+            ""
+        }
+
 
     operator fun get(key: K): V? =
         jedis.get(encodeKey(key))?.let { decodeValue(it) }

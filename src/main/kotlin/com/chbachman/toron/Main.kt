@@ -8,6 +8,7 @@ import com.chbachman.toron.jedis.closeDB
 import com.chbachman.toron.jedis.transaction
 import com.chbachman.toron.link.Show
 import com.chbachman.toron.link.linker
+import com.chbachman.toron.util.anilistShows
 import io.ktor.application.call
 import io.ktor.application.install
 import io.ktor.features.CORS
@@ -31,6 +32,17 @@ fun main(args: Array<String>) = runBlocking<Unit> {
     val logger = KotlinLogging.logger {}
 
     logger.info { ManagementFactory.getRuntimeMXBean().name }
+
+
+    logger.info { "Starting migration of AniList part 1." }
+    transaction {
+        val anilist = anilistShows()
+
+        anilist.scanValuesGroup { posts ->
+            set(posts.map { it.id to it })
+        }
+    }
+    logger.info { "Finished Migration of AniList part 1." }
 
     RedditCache.start()
 

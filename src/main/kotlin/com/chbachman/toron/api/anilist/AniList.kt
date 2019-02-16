@@ -2,6 +2,7 @@ package com.chbachman.toron.api.anilist
 
 import com.chbachman.toron.util.*
 import okio.Buffer
+import java.time.LocalDateTime
 
 data class Score(
     val score: Int,
@@ -40,7 +41,8 @@ data class AniList(
     val isLocked: Boolean,
     val siteUrl: String,
     val description: String? = null,
-    val stats: MediaStats
+    val stats: MediaStats,
+    val retrieved: LocalDateTime = LocalDateTime.now()
 ) {
     companion object: Codable<AniList> {
         override fun write(input: AniList, buffer: Buffer): Buffer {
@@ -66,6 +68,7 @@ data class AniList(
             buffer.writeList({ it, score ->
                 it.writeInt(score.score).writeInt(score.amount)
             }, input.stats.scoreDistribution)
+            buffer.writeLong(input.retrieved.toUTC())
 
             return buffer
         }

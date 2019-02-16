@@ -16,7 +16,10 @@ class AniListMap(
             .map { encodeMal(it.second.idMal!!) to encodeKey(it.first) }
             .toMap()
 
-        jedis.hmset(hashKey, modified)
+        if (!modified.isEmpty()) {
+            jedis.hmset(hashKey, modified)
+        }
+
         return super.set(collection)
     }
 
