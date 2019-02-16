@@ -18,7 +18,7 @@ data class AniListSearch(
             buffer.writeList(Buffer::writeInt, input.media).writeLong(input.retrieved.toUTC())
 
         override fun read(buffer: Buffer): AniListSearch =
-            AniListSearch(buffer.readList(Buffer::readInt))
+            AniListSearch(buffer.readList(Buffer::readInt), buffer.readLong().toUTCDate())
     }
 }
 
@@ -82,7 +82,7 @@ class AniListApi {
 
             val cached = shows[id]
 
-            if (cached == null || cached.retrieved.hoursAgo > 3) {
+            if (cached == null) {
                 logger.debug { "Loading id:`$id` from AniList." }
                 delay(1000)
 
@@ -114,7 +114,7 @@ class AniListApi {
 
             val cached = shows.getMAL(id)
 
-            if (cached == null || cached.retrieved.hoursAgo > 3) {
+            if (cached == null) {
                 logger.debug { "Loading malId:`$id` from AniList." }
                 delay(1000)
                 val response = idMalQuery.get<String>(mapOf("query" to id))

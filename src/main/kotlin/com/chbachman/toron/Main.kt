@@ -34,19 +34,6 @@ fun main(args: Array<String>) = runBlocking<Unit> {
 
     logger.info { ManagementFactory.getRuntimeMXBean().name }
 
-
-    logger.info { "Starting migration of AniList part 2." }
-    transaction {
-        val anilist = anilistSearches()
-
-        anilist.scanKeysGroup { keys ->
-            val values = get(keys)
-
-            set(keys.zip(values))
-        }
-    }
-    logger.info { "Finished Migration of AniList part 2." }
-
     RedditCache.start()
 
     transaction {

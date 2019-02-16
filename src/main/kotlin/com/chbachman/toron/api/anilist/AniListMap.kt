@@ -56,7 +56,6 @@ class AniListMap(
         return decodeValue(jedis[id])
     }
 
-
     private fun encodeMal(key: Int): ByteArray =
         key.toString().toByteArray()
 }
