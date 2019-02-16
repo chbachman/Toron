@@ -100,6 +100,7 @@ data class AniList(
             val stats = MediaStats(buffer.readList {
                 Score(score = it.readInt(), amount = it.readInt())
             })
+            val retrieved = buffer.readLong().toUTCDate()
 
             return AniList(
                 id = id,
@@ -117,7 +118,8 @@ data class AniList(
                 isLocked = isLocked,
                 siteUrl = siteUrl,
                 description = description,
-                stats = stats
+                stats = stats,
+                retrieved = retrieved
             )
         }
     }

@@ -7,17 +7,18 @@ import com.chbachman.toron.util.*
 import kotlinx.coroutines.delay
 import mu.KotlinLogging
 import okio.Buffer
+import java.time.LocalDateTime
 
 data class AniListSearch(
-    val search: String,
-    val media: List<Int>
+    val media: List<Int>,
+    val retrieved: LocalDateTime = LocalDateTime.now()
 ) {
     companion object: Codable<AniListSearch> {
         override fun write(input: AniListSearch, buffer: Buffer): Buffer =
-            buffer.writeList(Buffer::writeInt, input.media)
+            buffer.writeList(Buffer::writeInt, input.media).writeLong(input.retrieved.toUTC())
 
         override fun read(buffer: Buffer): AniListSearch =
-            AniListSearch("", buffer.readList(Buffer::readInt))
+            AniListSearch(buffer.readList(Buffer::readInt))
     }
 }
 
@@ -43,7 +44,7 @@ class AniListApi {
         )
 
         suspend fun search(query: String): List<AniList> = transaction {
-            val searchCache = mapOf<String, AniListSearch>("alsearch")
+            val searchCache = anilistSearches()
             val shows = anilistShows()
 
             val cached = searchCache[query]
@@ -61,7 +62,7 @@ class AniListApi {
                 // Store the IDs
                 val search = result.media.map { it.id }
 
-                searchCache[query] = AniListSearch(query, search)
+                searchCache[query] = AniListSearch(search)
                 return result.media
             } else {
                 return shows[cached.media]
@@ -81,7 +82,7 @@ class AniListApi {
 
             val cached = shows[id]
 
-            if (cached == null) {
+            if (cached == null || cached.retrieved.hoursAgo > 3) {
                 logger.debug { "Loading id:`$id` from AniList." }
                 delay(1000)
 
@@ -113,7 +114,7 @@ class AniListApi {
 
             val cached = shows.getMAL(id)
 
-            if (cached == null) {
+            if (cached == null || cached.retrieved.hoursAgo > 3) {
                 logger.debug { "Loading malId:`$id` from AniList." }
                 delay(1000)
                 val response = idMalQuery.get<String>(mapOf("query" to id))

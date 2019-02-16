@@ -8,6 +8,7 @@ import com.chbachman.toron.jedis.closeDB
 import com.chbachman.toron.jedis.transaction
 import com.chbachman.toron.link.Show
 import com.chbachman.toron.link.linker
+import com.chbachman.toron.util.anilistSearches
 import com.chbachman.toron.util.anilistShows
 import io.ktor.application.call
 import io.ktor.application.install
@@ -34,15 +35,17 @@ fun main(args: Array<String>) = runBlocking<Unit> {
     logger.info { ManagementFactory.getRuntimeMXBean().name }
 
 
-    logger.info { "Starting migration of AniList part 1." }
+    logger.info { "Starting migration of AniList part 2." }
     transaction {
-        val anilist = anilistShows()
+        val anilist = anilistSearches()
 
-        anilist.scanValuesGroup { posts ->
-            set(posts.map { it.id to it })
+        anilist.scanKeysGroup { keys ->
+            val values = get(keys)
+
+            set(keys.zip(values))
         }
     }
-    logger.info { "Finished Migration of AniList part 1." }
+    logger.info { "Finished Migration of AniList part 2." }
 
     RedditCache.start()
 
