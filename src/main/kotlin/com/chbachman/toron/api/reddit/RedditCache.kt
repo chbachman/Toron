@@ -14,10 +14,8 @@ import kotlin.concurrent.fixedRateTimer
 class RedditCache {
     companion object {
         private val logger = KotlinLogging.logger {}
-        private val disabled = System.getenv("DISABLE_REDDIT_CACHE").toBooleanStrictOrNull() ?: false
 
         fun start() {
-            if (disabled) { return }
             // Run every 10 minutes.
             fixedRateTimer(name = "Update Reddit", period = 10 * 60 * 1000) {
                 logger.info { "Starting Reddit update." }
