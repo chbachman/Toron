@@ -4,6 +4,7 @@ import com.chbachman.toron.api.anilist.AniList
 import com.chbachman.toron.api.reddit.RedditPost
 import com.chbachman.toron.jedis.transaction
 import com.chbachman.toron.util.*
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
@@ -24,21 +25,35 @@ suspend inline fun <T> linker(closure: (Linker) -> T) = transaction {
     closure(linker)
 }
 
+// We store data here to allow for easy rebuilding on cache.
+class LinkerData(val full: Map<Int, List<Long>>) {
+    val top = GlobalScope.async(start = CoroutineStart.LAZY) {
+        transaction {
+            val linker = Linker(Linker.data.await(), this)
+
+            linker
+                .sortedByDescending { show -> show.threads.sumBy { it.score } / show.threads.size }
+                .take(25)
+        }
+    }
+}
+
+// This shouldn't hold any data. It is only processing the data.
 class Linker constructor(
-    private val data: Map<Int, List<Long>>,
+    private val data: LinkerData,
     jedis: Jedis
 ): Iterable<Show> {
     private val valueSet = jedis.redditPosts()
     private val keySet = jedis.anilistShows()
 
     operator fun get(id: Int) =
-        data[id]?.let { posts(it) }
+        data.full[id]?.let { posts(it) }
 
     operator fun get(id: Collection<Int>) =
-        id.mapNotNull { data[it] }.map { posts(it) }
+        id.mapNotNull { data.full[it] }.map { posts(it) }
 
     override fun iterator() = object: Iterator<Show> {
-        val iterator = data.iterator()
+        val iterator = data.full.iterator()
         override fun hasNext(): Boolean = iterator.hasNext()
 
         override fun next(): Show {
@@ -50,6 +65,7 @@ class Linker constructor(
     private fun posts(posts: List<Long>) =
         valueSet[posts.map { it.toString(36) }]
 
+    // Generates the Data, Stores it for Future Use
     companion object {
         private val logger = KotlinLogging.logger {  }
         @Volatile var data = refreshAsync()
@@ -61,7 +77,7 @@ class Linker constructor(
         private fun refreshAsync() =
             GlobalScope.async { mutex.withLock { generateMap() } }
 
-        private suspend fun generateMap(): Map<Int, List<Long>> = transaction {
+        private suspend fun generateMap(): LinkerData = transaction {
             logger.info { "Loading initial list." }
             val posts = redditPosts()
             logger.info { "Starting up. Doing Grouping." }
@@ -87,7 +103,7 @@ class Linker constructor(
 
             logger.info { "Grouping completed with a size of ${result.size}" }
 
-            result
+            LinkerData(result)
         }
     }
 

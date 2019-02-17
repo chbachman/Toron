@@ -6,6 +6,7 @@ import com.chbachman.toron.api.reddit.RedditCache
 import com.chbachman.toron.api.reddit.RedditPost
 import com.chbachman.toron.jedis.closeDB
 import com.chbachman.toron.jedis.transaction
+import com.chbachman.toron.link.Linker
 import com.chbachman.toron.link.Show
 import com.chbachman.toron.link.linker
 import com.chbachman.toron.util.anilistSearches
@@ -43,13 +44,7 @@ fun main(args: Array<String>) = runBlocking<Unit> {
             routing {
                 route("/toron") {
                     get("/list") {
-                        logger.info { "Fetching List" }
-
-                        val topList = linker { linker ->
-                            linker
-                                .sortedByDescending { show -> show.threads.sumBy { it.score } / show.threads.size }
-                                .take(25)
-                        }
+                        val topList = Linker.data.await().top.await()
 
                         call.respond(topList)
                     }
