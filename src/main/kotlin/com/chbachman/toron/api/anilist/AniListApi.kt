@@ -36,7 +36,22 @@ private data class GraphQLData(
 class AniListApi {
     companion object {
         private val logger = KotlinLogging.logger {}
-        private val blockSet = mutableSetOf<String>()
+        private val blockSet = mutableSetOf(
+            "al:21273",
+            "al:99894",
+            "mal:36198",
+            "mal:34551",
+            "mal:27821",
+            "al:98203",
+            "mal:34823",
+            "mal:29317",
+            "mal:2136",
+            "mal:35338",
+            "mal:23819",
+            "mal:1639",
+            "mal:32034",
+            "mal:36186"
+        )
 
         private val searchQuery = GraphQLQuery(
             loadResource("series_search.gql"),
@@ -49,7 +64,7 @@ class AniListApi {
 
             val cached = searchCache[query]
 
-            if (cached == null) {
+            if (cached == null || cached.retrieved.hoursAgo > 1) {
                 logger.debug { "Loading search:`$query` from AniList." }
                 delay(1000)
 
@@ -82,7 +97,7 @@ class AniListApi {
 
             val cached = shows[id]
 
-            if (cached == null) {
+            if (cached == null || cached.retrieved.daysAgo > 7) {
                 logger.debug { "Loading id:`$id` from AniList." }
                 delay(1000)
 
@@ -114,7 +129,7 @@ class AniListApi {
 
             val cached = shows.getMAL(id)
 
-            if (cached == null) {
+            if (cached == null || cached.retrieved.daysAgo > 7) {
                 logger.debug { "Loading malId:`$id` from AniList." }
                 delay(1000)
                 val response = idMalQuery.get<String>(mapOf("query" to id))

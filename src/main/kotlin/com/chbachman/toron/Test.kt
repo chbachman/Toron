@@ -3,9 +3,11 @@ package com.chbachman.toron
 import com.chbachman.toron.api.reddit.RedditPost
 import com.chbachman.toron.jedis.closeDB
 import com.chbachman.toron.jedis.transaction
+import com.chbachman.toron.link.linker
 import com.chbachman.toron.util.*
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
+import java.io.File
 
 class Test {
     companion object {
@@ -13,10 +15,51 @@ class Test {
 
         @JvmStatic
         fun main(args: Array<String>) = runBlocking<Unit> {
+            val ids = File(loadResource("temp.txt").toURI()).readLines().mapNotNull { it.toIntOrNull() }
+            linker { linker ->
+                val original = ids
+                    .map { linker[it] }
+                    .filterNotNull()
+                    .flatten()
+                    .toList()
+
+                val count = original
+                    .filterNot { isDiscussion(it) }
+                    .toList()
+
+                println("Count: ${count.size}. Should be 0.")
+                count.take(10).forEach { println("https://www.reddit.com" + it.permalink) }
+            }
+
             transaction {
-                val redditPosts = redditPosts()
+                val posts = redditPosts()
+
+                val count = posts.values
+                    .filter { it.numComments > 2 }
+                    .filter { it.score > 1 }
+                    .filter { it.isSelf }
+                    .filter { it.episode != null }
+                    .filter { it.title.contains("\\d".toRegex()) }
+                    .filterNot { it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank() }
+                    .filter { it.show.await() == null }
+                    .filter { isDiscussion(it) }
+                    .toList()
+
+                println("Count should be 0: ${count.size}")
+
+                count.take(10).forEach { println("https://www.reddit.com" + it.permalink) }
             }
             closeDB()
+        }
+
+        fun isDiscussion(post: RedditPost): Boolean {
+            val title = post.title.trim()
+
+            if (!title.contains("Discussion", ignoreCase = true)) {
+                return false
+            }
+
+            return true
         }
 
         fun testPost(post: RedditPost) {

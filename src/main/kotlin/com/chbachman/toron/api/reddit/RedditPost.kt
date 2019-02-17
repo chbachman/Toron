@@ -81,7 +81,8 @@ data class RedditPost @JvmOverloads constructor(
 
     @JsonIgnore
     val show = GlobalScope.async(start = CoroutineStart.LAZY) {
-        aniListShow() ?: myAnimeListShow() ?: titleShow()
+        // TODO: Replace Title Show
+        aniListShow() ?: myAnimeListShow() // ?: titleShow()
     }
 
     val subreddit: String

@@ -6,6 +6,7 @@ import com.chbachman.toron.link.Linker
 import com.chbachman.toron.util.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.toBooleanStrictOrNull
 import mu.KotlinLogging
 import java.time.LocalDateTime
 import kotlin.concurrent.fixedRateTimer
@@ -13,8 +14,10 @@ import kotlin.concurrent.fixedRateTimer
 class RedditCache {
     companion object {
         private val logger = KotlinLogging.logger {}
+        private val disabled = System.getenv("DISABLE_REDDIT_CACHE").toBooleanStrictOrNull() ?: false
 
         fun start() {
+            if (disabled) { return }
             // Run every 10 minutes.
             fixedRateTimer(name = "Update Reddit", period = 10 * 60 * 1000) {
                 logger.info { "Starting Reddit update." }
