@@ -1,7 +1,5 @@
 package com.chbachman.toron.jedis
 
-import com.chbachman.toron.util.ByteCodable
-import com.chbachman.toron.util.coder
 import redis.clients.jedis.*
 import redis.clients.jedis.ScanParams.SCAN_POINTER_START_BINARY
 

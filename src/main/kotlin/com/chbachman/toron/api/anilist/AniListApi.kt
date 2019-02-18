@@ -1,7 +1,6 @@
 package com.chbachman.toron.api.anilist
 
 import com.beust.klaxon.Json
-import com.chbachman.toron.jedis.mapOf
 import com.chbachman.toron.jedis.transaction
 import com.chbachman.toron.util.*
 import kotlinx.coroutines.delay
@@ -58,29 +57,37 @@ class AniListApi {
             "https://graphql.anilist.co"
         )
 
-        suspend fun search(query: String): List<AniList> = transaction {
-            val searchCache = anilistSearches()
-            val shows = anilistShows()
+        suspend fun search(query: String): List<AniList> {
+            val cached = transaction { anilistSearches()[query] }
 
-            val cached = searchCache[query]
-
-            if (cached == null || cached.retrieved.hoursAgo > 1) {
+            return if (cached == null || cached.retrieved.hoursAgo > 1) {
                 logger.debug { "Loading search:`$query` from AniList." }
-                delay(1000)
 
                 val response = searchQuery.get<String>(mapOf("query" to query))
+
+                logger.debug { "Loaded Result from AniList." }
+
                 val result = response.parseJSON<GraphQLData>()!!.data.page
 
-                // Add to the stored list.
-                result.media.forEach { shows[it.id] = it }
+                logger.debug { "Parsed Result from AniList." }
 
-                // Store the IDs
-                val search = result.media.map { it.id }
+                transaction {
+                    val searchCache = anilistSearches()
+                    val shows = anilistShows()
 
-                searchCache[query] = AniListSearch(search)
-                return result.media
+                    // Add to the stored list.
+                    result.media.forEach { shows[it.id] = it }
+
+                    // Store the IDs
+                    val search = result.media.map { it.id }
+
+                    searchCache[query] = AniListSearch(search)
+                }
+
+                delay(1000)
+                result.media
             } else {
-                return shows[cached.media]
+                transaction { anilistShows()[cached.media] }
             }
         }
 
@@ -89,30 +96,33 @@ class AniListApi {
             "https://graphql.anilist.co"
         )
 
-        suspend fun byID(id: Int): AniList? = transaction {
-            val shows = anilistShows()
+        suspend fun byID(id: Int): AniList? {
             val blocked = blockSet.contains("al:$id")
 
-            if (blocked) { return@transaction null }
+            if (blocked) { return null }
 
-            val cached = shows[id]
+            val cached = transaction { anilistShows()[id] }
 
-            if (cached == null || cached.retrieved.daysAgo > 7) {
+            return if (cached == null || cached.retrieved.daysAgo > 7) {
                 logger.debug { "Loading id:`$id` from AniList." }
-                delay(1000)
 
                 val response = idQuery.get<String>(mapOf("query" to id))
+
+                logger.debug { "Loaded Result from AniList." }
+
                 val result = response.parseJSON<GraphQLData>()!!.data.page.media.singleOrNull()
+
+                delay(1000)
 
                 if (result == null) {
                     blockSet.add("al:$id")
                     null
                 } else {
-                    shows[result.id] = result
+                    transaction { anilistShows()[result.id] = result }
                     result
                 }
             } else {
-                return cached
+                cached
             }
         }
 
@@ -121,15 +131,14 @@ class AniListApi {
             "https://graphql.anilist.co"
         )
         
-        suspend fun byMalID(id: Int): AniList? = transaction {
-            val shows = anilistShows()
+        suspend fun byMalID(id: Int): AniList? {
             val blocked = blockSet.contains("mal:$id")
 
-            if (blocked) { return@transaction null }
+            if (blocked) { return null }
 
-            val cached = shows.getMAL(id)
+            val cached = transaction { anilistShows().getMAL(id) }
 
-            if (cached == null || cached.retrieved.daysAgo > 7) {
+            return if (cached == null || cached.retrieved.daysAgo > 7) {
                 logger.debug { "Loading malId:`$id` from AniList." }
                 delay(1000)
                 val response = idMalQuery.get<String>(mapOf("query" to id))
@@ -139,7 +148,7 @@ class AniListApi {
                     blockSet.add("mal:$id")
                     null
                 } else {
-                    shows[result.id] = result
+                    transaction { anilistShows()[result.id] = result }
                     result
                 }
             } else {

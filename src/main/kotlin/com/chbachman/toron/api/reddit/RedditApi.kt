@@ -28,7 +28,8 @@ private const val userAgent = "kotlin:com.chbachman.toron:0.0.1"
 private const val searchUrl = "https://api.reddit.com/r/anime/new"
 private const val infoUrl = "https://api.reddit.com/api/info"
 
-private val client = HttpClient().config {
+private val client: HttpClient
+get() = HttpClient().config {
     defaultRequest {
         userAgent(userAgent)
     }

@@ -5,7 +5,6 @@ import com.chbachman.toron.api.reddit.RedditPost
 import com.chbachman.toron.jedis.transaction
 import com.chbachman.toron.util.*
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex

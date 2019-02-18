@@ -10,14 +10,13 @@ private data class PushShiftDataHolder(
     val data: List<RedditPost>
 )
 
-private val client = HttpClient()
 private const val url = "https://api.pushshift.io/reddit/submission/search"
 private const val urlv2 = "https://apiv2.pushshift.io/reddit/submission/search"
 
 class PushShiftApi {
     companion object {
         suspend fun getData(after: Long): List<RedditPost>? = retry(3) {
-            val raw = client.get<String>(url) {
+            val raw = HttpClient().get<String>(url) {
                 parameter("subreddit", "anime")
                 parameter("after", after)
             }

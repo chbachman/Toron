@@ -6,12 +6,8 @@ import io.ktor.content.TextContent
 import io.ktor.http.ContentType
 import java.net.URL
 
-val defaultClient = HttpClient()
-
 suspend inline fun <reified T> GraphQLQuery.get(variables: Map<String, Any>): T =
-    defaultClient.post(url) {
-        body = content(variables)
-    }
+    HttpClient().post(url, body = content(variables))
 
 data class GraphQLQuery(
     val query: String,
