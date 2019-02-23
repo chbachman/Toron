@@ -1,5 +1,6 @@
 package com.chbachman.toron.api.reddit
 
+import com.chbachman.toron.jedis.manualTransaction
 import com.chbachman.toron.jedis.pipeline
 import com.chbachman.toron.jedis.transaction
 import com.chbachman.toron.link.Linker
@@ -34,11 +35,12 @@ class RedditCache {
             }
         }
 
-        private fun cleanup() = transaction {
+        private fun cleanup() {
+            val jedis = manualTransaction()
             logger.debug { "Started cleaning up posts." }
 
             var removedCount = 0
-            redditPosts().scanValuesGroup { posts ->
+            jedis.redditPosts().scanValuesGroup { posts ->
                 val removed = posts.asSequence()
                     .filter { it.created.monthsAgo > 7 }
                     .filterNot { it.numComments > 2 }
@@ -53,6 +55,7 @@ class RedditCache {
             }
 
             logger.debug { "Deleted $removedCount elements." }
+            jedis.close()
         }
 
         // This pulls from PushShift.
@@ -87,16 +90,14 @@ class RedditCache {
 
         // Pulls from Reddit.
         // Since this one starts at the latest and goes backwards it can miss posts.
-        private suspend fun addNewFast() = transaction {
-            val posts = redditPosts()
-
-            var result = RedditApi.getNew() ?: return@transaction
+        private suspend fun addNewFast() {
+            var result = RedditApi.getNew() ?: return
             var seenCount = 0
             var oldestDate = LocalDateTime.now()
-            val newestDate = posts.values.map { it.created }.max()!!
+            val newestDate = transaction { redditPosts().values.map { it.created }.max()!! }
 
             while (true) {
-                val seen = posts.anyExists(result.data.map { it.id })
+                val seen = transaction { redditPosts().anyExists(result.data.map { it.id }) }
 
                 logger.debug { "Amount Seen Already: $seenCount, Seen this one: $seen" }
                 oldestDate = minOf(result.data.map { it.created }.min()!!, oldestDate)
@@ -110,7 +111,7 @@ class RedditCache {
                     }
                 }
 
-                posts.set(result.data.map { it.id to it })
+                transaction { redditPosts().set(result.data.map { it.id to it }) }
                 findLinked(result.data)
                 delay(500)
                 result = result.next() ?: break
@@ -123,16 +124,18 @@ class RedditCache {
             }
         }
 
-        private suspend fun findLinked(posts: List<RedditPost>) = transaction {
-            val redditPosts = redditPosts()
-            val ids = posts
-                .asSequence()
-                .mapNotNull { it.links }
-                .flatten()
-                .filter { it.type == ServiceType.Reddit }
-                .mapNotNull { it.id }
-                .filter { !redditPosts.exists(it) }
-                .toList()
+        private suspend fun findLinked(posts: List<RedditPost>) {
+            val ids = transaction {
+                val redditPosts = redditPosts()
+                posts
+                    .asSequence()
+                    .mapNotNull { it.links }
+                    .flatten()
+                    .filter { it.type == ServiceType.Reddit }
+                    .mapNotNull { it.id }
+                    .filter { !redditPosts.exists(it) }
+                    .toList()
+            }
 
             val fetched = RedditApi.update(ids)?.data ?: return
 
@@ -141,14 +144,15 @@ class RedditCache {
             if (final.isNotEmpty()) {
                 logger.debug { "Adding ${final.size} Reddit Posts from links" }
 
-                redditPosts.set(final)
+                transaction { redditPosts().set(final) }
             }
         }
 
-        private suspend fun updateFast() = transaction {
+        private suspend fun updateFast() {
+            val jedis = manualTransaction()
             logger.info { "Updating Reddit Posts." }
             var count = 0
-            redditPosts().scanValuesGroup(1000) { posts ->
+            jedis.redditPosts().scanValuesGroup(1000) { posts ->
                 val outdated = posts.filter { it.outdated }
 
                 if (outdated.isNotEmpty()) {
@@ -171,6 +175,7 @@ class RedditCache {
                 }
             }
             logger.info { "Reddit Posts Updated." }
+            jedis.close()
         }
     }
 }

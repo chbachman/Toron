@@ -16,9 +16,11 @@ private const val urlv2 = "https://apiv2.pushshift.io/reddit/submission/search"
 class PushShiftApi {
     companion object {
         suspend fun getData(after: Long): List<RedditPost>? = retry(3) {
-            val raw = HttpClient().get<String>(url) {
-                parameter("subreddit", "anime")
-                parameter("after", after)
+            val raw = HttpClient().use {
+                it.get<String>(url) {
+                    parameter("subreddit", "anime")
+                    parameter("after", after)
+                }
             }
 
             val data = raw.parseJSONCamel<PushShiftDataHolder>()?.data

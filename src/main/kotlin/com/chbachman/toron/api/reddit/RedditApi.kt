@@ -4,6 +4,7 @@ import com.chbachman.toron.util.parseJSONCamel
 import com.chbachman.toron.util.retry
 import io.ktor.client.HttpClient
 import io.ktor.client.features.defaultRequest
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.http.userAgent
@@ -29,11 +30,12 @@ private const val searchUrl = "https://api.reddit.com/r/anime/new"
 private const val infoUrl = "https://api.reddit.com/api/info"
 
 private val client: HttpClient
-get() = HttpClient().config {
-    defaultRequest {
-        userAgent(userAgent)
+    get() = HttpClient().config {
+        defaultRequest { userAgent(userAgent) }
     }
-}
+
+private suspend inline fun <reified T> get(url: String, closure: HttpRequestBuilder.() -> Unit = {}): T =
+    client.use { it.get(url, closure) }
 
 data class RedditSearchResult(
     val data: List<RedditPost>,
@@ -46,7 +48,7 @@ data class RedditSearchResult(
 class RedditApi {
     companion object {
         suspend fun update(list: List<String>) = retry(3) {
-            val raw = client.get<String>(infoUrl) {
+            val raw = get<String>(infoUrl) {
                 parameter("id", list.joinToString(",") { "t3_$it" })
             }
 
@@ -54,7 +56,7 @@ class RedditApi {
         }
 
         suspend fun update(id: String) = retry(3) {
-            val raw = client.get<String>(infoUrl) {
+            val raw = get<String>(infoUrl) {
                 parameter("id", "t3_$id")
             }
 
@@ -62,7 +64,7 @@ class RedditApi {
         }
 
         suspend fun getNew(after: RedditSearchResult) = retry(3) {
-            val raw = client.get<String>(searchUrl) {
+            val raw = get<String>(searchUrl) {
                 parameter("count", after.count)
                 parameter("after", after.after)
             }
@@ -71,7 +73,7 @@ class RedditApi {
         }
 
         suspend fun getNew() = retry(3) {
-            val raw = client.get<String>(searchUrl)
+            val raw = get<String>(searchUrl)
 
             parseResponse(raw)
         }

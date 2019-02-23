@@ -7,7 +7,7 @@ import io.ktor.http.ContentType
 import java.net.URL
 
 suspend inline fun <reified T> GraphQLQuery.get(variables: Map<String, Any>): T =
-    HttpClient().post(url, body = content(variables))
+    HttpClient().use { it.post<T>(url, body = content(variables)) }
 
 data class GraphQLQuery(
     val query: String,

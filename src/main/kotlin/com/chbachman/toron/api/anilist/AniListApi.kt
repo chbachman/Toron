@@ -64,12 +64,7 @@ class AniListApi {
                 logger.debug { "Loading search:`$query` from AniList." }
 
                 val response = searchQuery.get<String>(mapOf("query" to query))
-
-                logger.debug { "Loaded Result from AniList." }
-
                 val result = response.parseJSON<GraphQLData>()!!.data.page
-
-                logger.debug { "Parsed Result from AniList." }
 
                 transaction {
                     val searchCache = anilistSearches()
@@ -107,9 +102,6 @@ class AniListApi {
                 logger.debug { "Loading id:`$id` from AniList." }
 
                 val response = idQuery.get<String>(mapOf("query" to id))
-
-                logger.debug { "Loaded Result from AniList." }
-
                 val result = response.parseJSON<GraphQLData>()!!.data.page.media.singleOrNull()
 
                 delay(1000)

@@ -10,6 +10,8 @@ val pool = JedisPool(JedisPoolConfig(), "localhost", 6379, Protocol.DEFAULT_TIME
 fun Jedis.scan(params: ScanParams) =
     scan(SCAN_POINTER_START_BINARY, params)
 
+fun manualTransaction(): Jedis = pool.resource
+
 inline fun <T> transaction(closure: Jedis.() -> T): T =
     pool.resource.use { jedis -> jedis.closure() }
 
