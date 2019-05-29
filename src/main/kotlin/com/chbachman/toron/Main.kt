@@ -53,6 +53,7 @@ fun main(args: Array<String>) = runBlocking<Unit> {
                     call.respond(topList)
                 }
                 get("/show/{id}") {
+                    logger.debug { "Getting Show: ${call.parameters["id"]}" }
                     val result = call.parameters["id"]?.toInt()
                         ?.let { AniListApi.byID(it) }
                         ?.let { show ->

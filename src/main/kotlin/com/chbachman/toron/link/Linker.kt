@@ -2,6 +2,7 @@ package com.chbachman.toron.link
 
 import com.chbachman.toron.api.anilist.AniList
 import com.chbachman.toron.api.reddit.RedditPost
+import com.chbachman.toron.jedis.manualTransaction
 import com.chbachman.toron.jedis.transaction
 import com.chbachman.toron.util.*
 import kotlinx.coroutines.CoroutineStart
@@ -76,19 +77,25 @@ class Linker constructor(
         private fun refreshAsync() =
             GlobalScope.async { mutex.withLock { generateMap() } }
 
-        private suspend fun generateMap(): LinkerData = transaction {
+        private suspend fun generateMap(): LinkerData {
             logger.info { "Loading initial list." }
-            val posts = redditPosts()
             logger.info { "Starting up. Doing Grouping." }
 
-            val result = posts.values
-                .asSequence()
-                .filter { it.numComments > 2 }
-                .filter { it.score > 1 }
-                .filter { it.isSelf }
-                .filter { it.episode != null }
-                .filter { it.title.contains("\\d".toRegex()) }
-                .filterNot { it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank() }
+            val result = transaction {
+                redditPosts().values
+                    .asSequence()
+                    .filter { it.numComments > 2 }
+                    .filter { it.score > 1 }
+                    .filter { it.isSelf }
+                    .filter { it.episode != null }
+                    .filter { it.title.contains("\\d".toRegex()) }
+                    .filterNot { it.selftext?.deleteInside(Char::isOpening, Char::isClosing).isNullOrBlank() }
+                    .toList()
+            }
+
+            logger.info { "Filtering Done with a size of ${result.size}" }
+
+            val temp = result
                 .groupBy { it.show.await() }
                 .mapNotNull { entry ->
                     val showId = entry.key
@@ -100,11 +107,10 @@ class Linker constructor(
                 }
                 .toMap()
 
-            logger.info { "Grouping completed with a size of ${result.size}" }
+            logger.info { "Grouping completed with a size of ${temp.size}" }
 
-            LinkerData(result)
+
+            return LinkerData(temp)
         }
     }
-
-
 }

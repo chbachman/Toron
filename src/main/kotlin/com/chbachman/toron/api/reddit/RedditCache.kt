@@ -27,7 +27,7 @@ class RedditCache {
                         cleanup()
                         Linker.invalidate()
                     } catch (err: Exception) {
-                        logger.info { "Unable to update Reddit. Exiting this attempt." }
+                        logger.error(err) { "Unable to update Reddit. Exiting this attempt." }
                     }
                 }
 
@@ -83,7 +83,7 @@ class RedditCache {
                         break
                     }
 
-                    delay(200)
+                    delay(500)
                 }
             }
         }
